@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Code2,
@@ -191,6 +191,7 @@ export default function PlatformShell({
   const [showMobileMoreDialog, setShowMobileMoreDialog] = useState(false);
   const [showNsec, setShowNsec] = useState(false);
   const [copiedNsec, setCopiedNsec] = useState(false);
+  const [, startRouteTransition] = useTransition();
   const [baseUrl, setBaseUrl] = useState(() => {
     if (typeof window === "undefined") return DEFAULT_BASE_URL;
     const saved = window.localStorage.getItem("platform_active_base_url");
@@ -201,10 +202,28 @@ export default function PlatformShell({
     return normalized;
   });
 
+  const navigateToPath = useCallback(
+    (path: string) => {
+      startRouteTransition(() => {
+        router.push(path);
+      });
+    },
+    [router, startRouteTransition]
+  );
+
   useEffect(() => {
     if (allowUnauthenticated || !authChecked || isAuthenticated) return;
-    router.replace("/");
-  }, [allowUnauthenticated, authChecked, isAuthenticated, router]);
+    startRouteTransition(() => {
+      router.replace("/");
+    });
+  }, [allowUnauthenticated, authChecked, isAuthenticated, router, startRouteTransition]);
+
+  useEffect(() => {
+    if (!authChecked) return;
+    Object.values(TAB_PATHS).forEach((path) => {
+      router.prefetch(path);
+    });
+  }, [authChecked, router]);
 
   useEffect(() => {
     const handleTabNavigation = (event: Event) => {
@@ -221,7 +240,7 @@ export default function PlatformShell({
           onRequestLogin?.();
           return;
         }
-        router.push(TAB_PATHS[requestedTab]);
+        navigateToPath(TAB_PATHS[requestedTab]);
       }
     };
 
@@ -229,7 +248,7 @@ export default function PlatformShell({
     return () => {
       window.removeEventListener("platform:navigate-tab", handleTabNavigation);
     };
-  }, [isGuestMode, onRequestLogin, router]);
+  }, [isGuestMode, navigateToPath, onRequestLogin]);
 
   useEffect(() => {
     setThemeMounted(true);
@@ -273,15 +292,16 @@ export default function PlatformShell({
     },
   ];
   const navigateToTab = (tab: PlatformTab) => {
+    if (!isGuestMode && tab === activeTab) return;
     if (isGuestMode) {
       if (tab === "home") {
-        router.push("/");
+        navigateToPath("/");
       } else {
         onRequestLogin?.();
       }
       return;
     }
-    router.push(TAB_PATHS[tab]);
+    navigateToPath(TAB_PATHS[tab]);
   };
   const handleBaseUrlChange = (nextBaseUrl: string) => {
     const normalized = normalizeBaseUrl(nextBaseUrl);
