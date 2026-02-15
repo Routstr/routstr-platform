@@ -1089,10 +1089,10 @@ export default function PlaygroundPanel({
   }, [chatMessages, runState.status]);
 
   return (
-    <div className="space-y-3">
+    <div className="min-w-0 space-y-3">
       <section className="space-y-3">
         <Card className="gap-0 p-3">
-          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+          <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
             <label className="space-y-1">
               <span className="text-xs text-muted-foreground">Endpoint</span>
               <SearchableSelect
@@ -1160,7 +1160,7 @@ export default function PlaygroundPanel({
           ) : null}
         </Card>
 
-        <Card className="gap-0 h-[72vh] min-h-[28rem] overflow-hidden p-0 xl:h-[calc(100vh-13rem)] xl:min-h-0">
+        <Card className="gap-0 h-[58svh] min-h-[18rem] overflow-hidden p-0 sm:h-[68vh] sm:min-h-[24rem] xl:h-[calc(100vh-13rem)] xl:min-h-0">
           <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2.5 sm:px-4">
             <h3 className="text-base font-semibold tracking-tight">Chat</h3>
             <div className="flex items-center gap-2">
@@ -1186,9 +1186,9 @@ export default function PlaygroundPanel({
             </div>
           </div>
 
-          <div className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-4">
+          <div className="relative min-h-0 flex-1 overflow-x-clip overflow-y-auto overscroll-contain px-3 py-3 sm:px-4">
             {chatMessages.length === 0 ? (
-              <div className="flex h-full min-h-[18rem] flex-col items-center justify-center gap-3 text-center">
+              <div className="flex h-full min-h-[14rem] flex-col items-center justify-center gap-3 text-center sm:min-h-[18rem]">
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-border/80 bg-muted/35">
                   <MessageCircle className="h-5 w-5 text-muted-foreground" />
                 </div>

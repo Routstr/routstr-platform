@@ -405,7 +405,7 @@ export default function Nip60WalletPanel({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <Button
@@ -432,7 +432,7 @@ export default function Nip60WalletPanel({
         ) : null}
       </div>
 
-      <Card className="gap-0 bg-muted/20 p-4 py-4 shadow-none">
+      <Card className="min-w-0 gap-0 bg-muted/20 p-4 py-4 shadow-none">
         <div className="flex items-center justify-between gap-3">
           <span className="text-sm text-muted-foreground">Available balance</span>
           <span className="text-lg font-semibold text-foreground">
@@ -500,7 +500,7 @@ export default function Nip60WalletPanel({
                 return (
                   <div
                     key={mint}
-                    className={`flex items-center gap-2 rounded-md border px-2.5 py-2 ${
+                    className={`flex min-w-0 items-center gap-2 rounded-md border px-2.5 py-2 ${
                       isActive
                         ? "border-border bg-muted/60"
                         : "border-border/60 bg-muted/25 hover:bg-muted/40"
@@ -522,7 +522,7 @@ export default function Nip60WalletPanel({
                     >
                       {cleanMintUrl(mint)}
                     </label>
-                    <span className="text-xs font-medium text-muted-foreground">
+                    <span className="shrink-0 text-xs font-medium text-muted-foreground">
                       {(mintBalances[mint] || 0).toLocaleString()} sats
                     </span>
                     {showRemoveMintMode ? (

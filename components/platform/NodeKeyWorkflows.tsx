@@ -107,7 +107,7 @@ function SectionShell({
   return isMinimalLayout ? (
     <div className="space-y-3">{children}</div>
   ) : (
-    <Card className="gap-0 p-5">{children}</Card>
+    <Card className="gap-0 p-4 sm:p-5">{children}</Card>
   );
 }
 
@@ -1071,11 +1071,11 @@ export default function NodeKeyWorkflows({
           <Tabs
             value={lightningMode}
             onValueChange={(value) => setLightningMode(value as "create" | "topup" | "recover")}
-            className="w-full max-w-[24rem] gap-2"
+            className="w-full max-w-full gap-2 sm:max-w-[24rem]"
           >
-            <TabsList>
+            <TabsList className="w-full max-w-full overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               {lightningTabOptions.map((option) => (
-                <TabsTrigger key={option.id} value={option.id}>
+                <TabsTrigger key={option.id} value={option.id} className="min-w-[5.75rem]">
                   {option.label}
                 </TabsTrigger>
               ))}
@@ -1087,7 +1087,7 @@ export default function NodeKeyWorkflows({
         </div>
 
         <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_19rem]">
-          <div className="rounded-xl border border-border/60 bg-muted/15 p-4 space-y-4 min-h-[30rem]">
+          <div className="min-w-0 rounded-xl border border-border/60 bg-muted/15 p-4 space-y-4 min-h-0 sm:min-h-[30rem]">
             {lightningMode === "create" ? (
               <div
                 id="lightning-workflow-panel-create"
@@ -1290,7 +1290,7 @@ export default function NodeKeyWorkflows({
             ) : null}
           </div>
 
-          <aside className="rounded-xl border border-border/60 bg-muted/10 p-4 space-y-3 min-h-[30rem]">
+          <aside className="min-w-0 rounded-xl border border-border/60 bg-muted/10 p-4 space-y-3 min-h-0 sm:min-h-[30rem]">
             <p className="text-xs font-medium text-muted-foreground">
               {lightningMode === "create" ? "Create status" : "Invoice preview"}
             </p>
@@ -1357,11 +1357,11 @@ export default function NodeKeyWorkflows({
           <Tabs
             value={childMode}
             onValueChange={(value) => setChildMode(value as "create" | "status")}
-            className="w-full max-w-[24rem] gap-2"
+            className="w-full max-w-full gap-2 sm:max-w-[24rem]"
           >
-            <TabsList>
+            <TabsList className="w-full max-w-full overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               {childTabOptions.map((option) => (
-                <TabsTrigger key={option.id} value={option.id}>
+                <TabsTrigger key={option.id} value={option.id} className="min-w-[5.75rem]">
                   {option.label}
                 </TabsTrigger>
               ))}
@@ -1372,7 +1372,7 @@ export default function NodeKeyWorkflows({
           </p>
         </div>
 
-        <div className="mt-4 rounded-xl border border-border/60 bg-muted/15 p-4 space-y-4 min-h-[26rem]">
+        <div className="mt-4 rounded-xl border border-border/60 bg-muted/15 p-4 space-y-4 min-h-0 sm:min-h-[26rem]">
           {childMode === "create" ? (
             <div
               id="child-workflow-panel-create"

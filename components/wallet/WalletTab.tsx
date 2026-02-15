@@ -20,6 +20,7 @@ import {
 } from "@/hooks/useBitcoinConnect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 
 interface MintQuoteResponse {
@@ -393,7 +394,7 @@ const WalletTab: React.FC<WalletTabProps> = ({
     payTotalBudget !== null ? balance >= payTotalBudget : false;
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-5">
       <section className="rounded-xl border border-border/70 bg-muted/20 p-4 sm:p-5">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="space-y-1">
@@ -422,15 +423,15 @@ const WalletTab: React.FC<WalletTabProps> = ({
         </div>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[13rem_minmax(0,1fr)]">
-        <aside className="rounded-xl border border-border/70 bg-card/70 p-2.5 xl:h-[34rem] xl:overflow-y-auto">
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[12rem_minmax(0,1fr)]">
+        <aside className="min-w-0 rounded-xl border border-border/70 bg-card/70 p-2.5 lg:h-[34rem] lg:overflow-y-auto">
           <p className="px-2 pb-2 text-[11px] text-muted-foreground">Wallet</p>
-          <nav className="space-y-1.5">
+          <nav className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden lg:block lg:space-y-1.5 lg:overflow-visible lg:pb-0">
             <Button
               onClick={() => setActiveTab("deposit")}
               variant={activeTab === "deposit" ? "secondary" : "ghost"}
               size="lg"
-              className="w-full justify-start"
+              className="min-w-[6.75rem] shrink-0 justify-start lg:w-full lg:min-w-0"
               type="button"
             >
               Deposit
@@ -439,7 +440,7 @@ const WalletTab: React.FC<WalletTabProps> = ({
               onClick={() => setActiveTab("send")}
               variant={activeTab === "send" ? "secondary" : "ghost"}
               size="lg"
-              className="w-full justify-start"
+              className="min-w-[6.75rem] shrink-0 justify-start lg:w-full lg:min-w-0"
               type="button"
             >
               Send
@@ -448,7 +449,7 @@ const WalletTab: React.FC<WalletTabProps> = ({
               onClick={() => setActiveTab("history")}
               variant={activeTab === "history" ? "secondary" : "ghost"}
               size="lg"
-              className="w-full justify-start"
+              className="min-w-[6.75rem] shrink-0 justify-start lg:w-full lg:min-w-0"
               type="button"
             >
               Invoices
@@ -456,9 +457,9 @@ const WalletTab: React.FC<WalletTabProps> = ({
           </nav>
         </aside>
 
-        <section className="rounded-xl border border-border/70 bg-card/80 p-4 sm:p-5 min-h-[30rem] xl:h-[34rem] xl:overflow-hidden">
+        <section className="min-w-0 overflow-x-clip rounded-xl border border-border/70 bg-card/80 p-4 sm:p-5 min-h-[24rem] sm:min-h-[30rem] lg:h-[34rem]">
           {activeTab === "deposit" && (
-            <div className="space-y-6 h-full xl:overflow-y-auto xl:pr-1">
+            <div className="h-full min-w-0 space-y-6 overflow-x-clip lg:overflow-y-auto lg:pr-1">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h3 className="text-base font-semibold tracking-tight">Deposit</h3>
@@ -475,15 +476,15 @@ const WalletTab: React.FC<WalletTabProps> = ({
 
               <div className="space-y-4">
                 <h3 className="text-sm font-medium text-foreground/80">Via Lightning</h3>
-                <div className="rounded-xl border border-border/60 bg-muted/15 p-4 space-y-4">
+                <div className="space-y-4">
                   <BitcoinConnectStatusRow
                     status={bcStatus}
                     balance={bcBalance}
                     onConnect={connectWallet}
-                    className="rounded-md border border-border/60 bg-muted/25 p-3"
+                    className="border-border/60 bg-muted/10"
                   />
 
-                  <div className="grid gap-2 sm:grid-cols-3">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                     {popularAmounts.map((amount) => (
                       <Button
                         key={`mint-quick-${amount}`}
@@ -497,8 +498,9 @@ const WalletTab: React.FC<WalletTabProps> = ({
                     ))}
                   </div>
 
-                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_13rem]">
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,13rem)]">
                     <Input
+                      className="min-w-0"
                       type="number"
                       value={mintAmount}
                       onChange={(event) => setMintAmount(event.target.value)}
@@ -521,11 +523,11 @@ const WalletTab: React.FC<WalletTabProps> = ({
                   </div>
 
                   {mintInvoice ? (
-                    <div className="space-y-4">
-                      <div className="bg-muted/50 border border-border rounded-md p-4">
-                        <div className="mb-2 flex justify-between items-center">
+                    <div className="rounded-md border border-border/60 bg-muted/10 p-4 space-y-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-3">
                           <span className="text-sm text-muted-foreground">
-                            Lightning Invoice
+                            Lightning invoice
                           </span>
                           <button
                             onClick={() => setShowInvoiceModal(true)}
@@ -540,11 +542,11 @@ const WalletTab: React.FC<WalletTabProps> = ({
                         </div>
                       </div>
 
-                      <div className="bg-muted/50 border border-border rounded-md p-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-xs text-muted-foreground">
-                            Pay with connected wallet
-                          </span>
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/50 pt-3">
+                        <span className="text-xs text-muted-foreground">
+                          Pay with connected wallet
+                        </span>
+                        <div className="flex items-center gap-2">
                           <Button
                             onClick={() => {
                               void payMintInvoiceWithConnectedWallet();
@@ -556,25 +558,26 @@ const WalletTab: React.FC<WalletTabProps> = ({
                           >
                             {isPayingWithWallet ? "Paying..." : "Pay"}
                           </Button>
+                          <Button
+                            onClick={handleCancel}
+                            variant="ghost"
+                            size="sm"
+                            type="button"
+                          >
+                            Cancel
+                          </Button>
                         </div>
                       </div>
-
-                      <Button
-                        onClick={handleCancel}
-                        variant="secondary"
-                        className="w-full"
-                        type="button"
-                      >
-                        Cancel
-                      </Button>
                     </div>
                   ) : null}
                 </div>
               </div>
 
+              <Separator className="bg-border/60" />
+
               <div className="space-y-4">
                 <h3 className="text-sm font-medium text-foreground/80">Via Cashu</h3>
-                <div className="rounded-xl border border-border/60 bg-muted/15 p-4 space-y-3">
+                <div className="space-y-3">
                   <h4 className="text-sm font-medium">Import token</h4>
                   <div className="relative">
                     <Textarea
@@ -601,26 +604,25 @@ const WalletTab: React.FC<WalletTabProps> = ({
                   >
                     {isImporting ? "Importing..." : "Import token"}
                   </Button>
-                  <div className="rounded-md bg-background/25 p-2.5">
-                    <p className="text-xs text-muted-foreground">
-                      Paste a received Cashu token to top up your wallet balance.
-                    </p>
-                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Paste a received Cashu token to top up your wallet balance.
+                  </p>
                 </div>
               </div>
             </div>
           )}
 
           {activeTab === "send" && (
-            <div className="space-y-6 h-full xl:overflow-y-auto xl:pr-1">
+            <div className="h-full min-w-0 space-y-6 overflow-x-clip lg:overflow-y-auto lg:pr-1">
               <div className="space-y-4">
                 <h3 className="text-sm font-medium text-foreground/80">
                   Via Lightning
                 </h3>
-                <div className="rounded-xl border border-border/60 bg-muted/15 p-4 space-y-5">
-                  <label className="flex flex-col gap-1.5">
+                <div className="space-y-5">
+                  <label className="flex min-w-0 flex-col gap-1.5">
                     <span className="text-xs text-muted-foreground">Invoice</span>
                     <Input
+                      className="min-w-0"
                       placeholder="lnbc..."
                       value={sendInvoice}
                       onChange={(event) => {
@@ -636,9 +638,9 @@ const WalletTab: React.FC<WalletTabProps> = ({
                   </label>
 
                   {hasPayInvoiceInput ? (
-                    <>
+                    <div className="rounded-md border border-border/60 bg-muted/10 p-3 space-y-3">
                       <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-md bg-background/30 p-3">
+                        <div>
                           <p className="text-xs text-muted-foreground">Amount</p>
                           <p className="mt-1 text-base font-semibold text-foreground">
                             {invoiceAmount !== null
@@ -646,7 +648,7 @@ const WalletTab: React.FC<WalletTabProps> = ({
                               : "Awaiting quote"}
                           </p>
                         </div>
-                        <div className="rounded-md bg-background/30 p-3">
+                        <div>
                           <p className="text-xs text-muted-foreground">Max fee reserve</p>
                           <p className="mt-1 text-base font-semibold text-foreground">
                             {invoiceFeeReserve !== null
@@ -655,59 +657,58 @@ const WalletTab: React.FC<WalletTabProps> = ({
                           </p>
                         </div>
                       </div>
-
-                      <div className="rounded-md bg-background/20 p-3 space-y-4">
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div className="rounded-md bg-background/25 p-3">
-                            <p className="text-[11px] text-muted-foreground">Available balance</p>
-                            <p className="mt-1 text-sm font-semibold text-foreground">
-                              {balance.toLocaleString()} sats
-                            </p>
-                          </div>
-                          <div className="rounded-md bg-background/25 p-3">
-                            <p className="text-[11px] text-muted-foreground">Total spend budget</p>
-                            <p className="mt-1 text-sm font-semibold text-foreground">
-                              {payTotalBudget !== null
-                                ? `${payTotalBudget.toLocaleString()} sats`
-                                : "Awaiting quote"}
-                            </p>
-                          </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <p className="text-[11px] text-muted-foreground">Available balance</p>
+                          <p className="mt-1 text-sm font-semibold text-foreground">
+                            {balance.toLocaleString()} sats
+                          </p>
                         </div>
-                        <div className="h-px bg-border/45" />
-                        <div className="space-y-2 px-1">
-                          <div className="flex items-center gap-2 text-xs">
-                            <CheckCircle2 className="h-3.5 w-3.5 text-foreground/90" />
-                            <span className="text-muted-foreground">Invoice pasted</span>
-                          </div>
-                          <div className="flex items-center gap-2 text-xs">
-                            {invoiceAmount !== null ? (
-                              <CheckCircle2 className="h-3.5 w-3.5 text-foreground/90" />
-                            ) : (
-                              <Circle className="h-3.5 w-3.5 text-muted-foreground" />
-                            )}
-                            <span className="text-muted-foreground">Quote resolved</span>
-                          </div>
-                          <div className="flex items-center gap-2 text-xs">
-                            {payTotalBudget !== null && canCoverPayBudget ? (
-                              <CheckCircle2 className="h-3.5 w-3.5 text-foreground/90" />
-                            ) : (
-                              <Circle className="h-3.5 w-3.5 text-muted-foreground" />
-                            )}
-                            <span className="text-muted-foreground">Budget sufficient</span>
-                          </div>
+                        <div>
+                          <p className="text-[11px] text-muted-foreground">Total spend budget</p>
+                          <p className="mt-1 text-sm font-semibold text-foreground">
+                            {payTotalBudget !== null
+                              ? `${payTotalBudget.toLocaleString()} sats`
+                              : "Awaiting quote"}
+                          </p>
                         </div>
                       </div>
-                    </>
+                      <Separator className="bg-border/45" />
+                      <div className="space-y-2 px-1">
+                        <div className="flex items-center gap-2 text-xs">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-foreground/90" />
+                          <span className="text-muted-foreground">Invoice pasted</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          {invoiceAmount !== null ? (
+                            <CheckCircle2 className="h-3.5 w-3.5 text-foreground/90" />
+                          ) : (
+                            <Circle className="h-3.5 w-3.5 text-muted-foreground" />
+                          )}
+                          <span className="text-muted-foreground">Quote resolved</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          {payTotalBudget !== null && canCoverPayBudget ? (
+                            <CheckCircle2 className="h-3.5 w-3.5 text-foreground/90" />
+                          ) : (
+                            <Circle className="h-3.5 w-3.5 text-muted-foreground" />
+                          )}
+                          <span className="text-muted-foreground">Budget sufficient</span>
+                        </div>
+                      </div>
+                    </div>
                   ) : null}
 
-                  <div className="flex flex-wrap items-center gap-3 pt-2">
-                    <Button
-                      onClick={resetSendInvoiceState}
-                      variant="ghost"
-                      type="button"
-                    >
-                      Clear
-                    </Button>
+                  <div className="flex flex-wrap items-center gap-3">
+                    {hasPayInvoiceInput ? (
+                      <Button
+                        onClick={resetSendInvoiceState}
+                        variant="ghost"
+                        type="button"
+                      >
+                        Clear
+                      </Button>
+                    ) : null}
                     <Button
                       onClick={() => void handlePayInvoice()}
                       disabled={
@@ -728,14 +729,16 @@ const WalletTab: React.FC<WalletTabProps> = ({
                 </div>
               </div>
 
+              <Separator className="bg-border/60" />
+
               <div className="space-y-4">
                 <h3 className="text-sm font-medium text-foreground/80">
                   Via eCash
                 </h3>
-                <div className="rounded-xl border border-border/60 bg-muted/15 p-4 space-y-5">
+                <div className="space-y-5">
                   <div className="space-y-3">
                     <h4 className="text-sm font-medium">Generate token</h4>
-                    <div className="grid gap-2 grid-cols-3">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                       {popularAmounts.map((amount) => (
                         <Button
                           key={`send-quick-${amount}`}
@@ -747,8 +750,9 @@ const WalletTab: React.FC<WalletTabProps> = ({
                         </Button>
                       ))}
                     </div>
-                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_13rem]">
+                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,13rem)]">
                       <Input
+                        className="min-w-0"
                         type="number"
                         value={sendAmount}
                         onChange={(event) => setSendAmount(event.target.value)}
@@ -798,7 +802,7 @@ const WalletTab: React.FC<WalletTabProps> = ({
           )}
 
           {activeTab === "history" && (
-            <div className="space-y-3 h-full xl:overflow-y-auto xl:pr-1">
+            <div className="h-full space-y-3 overflow-x-clip lg:overflow-y-auto lg:pr-1">
               <div>
                 <h3 className="text-base font-semibold tracking-tight">Invoices</h3>
                 <p className="text-sm text-muted-foreground">

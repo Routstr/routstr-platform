@@ -13,6 +13,7 @@ import {
   KeyRound,
   LogIn,
   LogOut,
+  MoreHorizontal,
   Monitor,
   Moon,
   Sun,
@@ -31,6 +32,7 @@ import ApiKeysPanel from "@/components/platform/ApiKeysPanel";
 import Nip60WalletPanel from "@/components/platform/Nip60WalletPanel";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +40,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 
 export type PlatformTab = "home" | "playground" | "api-keys" | "wallet";
 
@@ -80,7 +89,8 @@ const TAB_META: Record<
   },
   playground: {
     title: "Playground",
-    description: "Run test requests and iterate on prompts with live responses.",
+    description:
+      "Run test requests and iterate on prompts with live responses.",
   },
   "api-keys": {
     title: "API Keys",
@@ -137,6 +147,7 @@ export default function PlatformShell({
   const isGuestMode = allowUnauthenticated && !isAuthenticated;
   const [themeMounted, setThemeMounted] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showMobileMoreDialog, setShowMobileMoreDialog] = useState(false);
   const [showNsec, setShowNsec] = useState(false);
   const [copiedNsec, setCopiedNsec] = useState(false);
   const [baseUrl, setBaseUrl] = useState(() => {
@@ -186,33 +197,39 @@ export default function PlatformShell({
     id: PlatformTab;
     label: string;
     icon: typeof Home;
-    href: string;
   }> = [
     {
       id: "home",
       label: "Home",
       icon: Home,
-      href: TAB_PATHS.home,
     },
     {
       id: "playground",
       label: "Playground",
       icon: Code2,
-      href: TAB_PATHS.playground,
     },
     {
       id: "api-keys",
       label: "API Keys",
       icon: KeyRound,
-      href: TAB_PATHS["api-keys"],
     },
     {
       id: "wallet",
       label: "Wallet",
       icon: Wallet,
-      href: TAB_PATHS.wallet,
     },
   ];
+  const navigateToTab = (tab: PlatformTab) => {
+    if (isGuestMode) {
+      if (tab === "home") {
+        router.push("/");
+      } else {
+        onRequestLogin?.();
+      }
+      return;
+    }
+    router.push(TAB_PATHS[tab]);
+  };
   const handleBaseUrlChange = (nextBaseUrl: string) => {
     const normalized = normalizeBaseUrl(nextBaseUrl);
     const safeBaseUrl =
@@ -234,7 +251,10 @@ export default function PlatformShell({
       : "system"
     : "system";
   const activeAccount = useObservableState(manager.active$);
-  const exportNsec = useMemo(() => resolveAccountNsec(activeAccount), [activeAccount]);
+  const exportNsec = useMemo(
+    () => resolveAccountNsec(activeAccount),
+    [activeAccount],
+  );
   const currentTab = isGuestMode ? "home" : activeTab;
   const tabMeta = TAB_META[currentTab];
 
@@ -255,24 +275,26 @@ export default function PlatformShell({
   }
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(var(--platform-tint),var(--platform-tint)),radial-gradient(circle_at_10%_0%,var(--platform-glow-top),transparent_38%),radial-gradient(circle_at_90%_100%,var(--platform-glow-bottom),transparent_45%),var(--background)] text-foreground">
-      <div className="mx-auto w-full max-w-6xl px-3 py-4 sm:px-5 sm:py-5">
-        <div className="grid items-start gap-4 md:grid-cols-[11.5rem_minmax(0,1fr)] md:gap-0">
-          <aside className="space-y-5 md:sticky md:top-5 md:flex md:min-h-[calc(100vh-2.5rem)] md:flex-col md:self-start">
+    <div className="min-h-screen overflow-x-clip bg-[linear-gradient(var(--platform-tint),var(--platform-tint)),radial-gradient(circle_at_10%_0%,var(--platform-glow-top),transparent_38%),radial-gradient(circle_at_90%_100%,var(--platform-glow-bottom),transparent_45%),var(--background)] text-foreground">
+      <div className="mx-auto w-full max-w-6xl px-3 py-4 pb-[calc(4.75rem+env(safe-area-inset-bottom))] sm:px-5 sm:py-5 md:pb-5">
+        <div className="grid min-w-0 items-start gap-4 md:grid-cols-[11.5rem_minmax(0,1fr)] md:gap-0">
+          <aside className="hidden min-w-0 space-y-5 md:sticky md:top-5 md:flex md:min-h-[calc(100vh-2.5rem)] md:flex-col md:self-start">
             <div className="space-y-2 px-1">
               <Button
-                onClick={() => router.push(isGuestMode ? "/" : TAB_PATHS.home)}
+                onClick={() => navigateToTab("home")}
                 variant="ghost"
                 className="h-auto w-full justify-start px-0 text-left text-xl font-semibold"
                 type="button"
               >
                 Routstr Platform
               </Button>
-              <p className="text-[11px] text-muted-foreground/75">Developer Console</p>
+              <p className="text-[11px] text-muted-foreground/75">
+                Developer Console
+              </p>
             </div>
 
             <div className="flex flex-col py-1 md:min-h-0 md:flex-1">
-              <nav className="space-y-2.5">
+              <nav className="hidden md:block md:space-y-2.5">
                 {tabs.map((tab) => {
                   const TabIcon = tab.icon;
                   const isActive = currentTab === tab.id;
@@ -282,17 +304,7 @@ export default function PlatformShell({
                       variant={isActive ? "secondary" : "ghost"}
                       size="lg"
                       className="w-full justify-start"
-                      onClick={() => {
-                        if (isGuestMode) {
-                          if (tab.id === "home") {
-                            router.push("/");
-                          } else {
-                            onRequestLogin?.();
-                          }
-                          return;
-                        }
-                        router.push(tab.href);
-                      }}
+                      onClick={() => navigateToTab(tab.id)}
                       type="button"
                     >
                       <TabIcon className="h-4 w-4" />
@@ -301,13 +313,17 @@ export default function PlatformShell({
                   );
                 })}
               </nav>
-              <div className="mt-4 space-y-2">
+              <div className="mt-3 grid grid-cols-2 gap-2 md:mt-4 md:block md:space-y-2">
                 <Button
                   asChild
                   variant="ghost"
                   className="w-full justify-between"
                 >
-                  <a href="https://docs.routstr.com" target="_blank" rel="noreferrer">
+                  <a
+                    href="https://docs.routstr.com"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
                     <span>Docs</span>
                     <ExternalLink className="h-3.5 w-3.5" />
                   </a>
@@ -317,7 +333,11 @@ export default function PlatformShell({
                   variant="ghost"
                   className="w-full justify-between"
                 >
-                  <a href="https://chat.routstr.com" target="_blank" rel="noreferrer">
+                  <a
+                    href="https://chat.routstr.com"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
                     <span>Chat App</span>
                     <ExternalLink className="h-3.5 w-3.5" />
                   </a>
@@ -385,13 +405,15 @@ export default function PlatformShell({
             </div>
           </aside>
 
-          <section className="relative p-4 sm:p-5 md:ml-5 md:min-h-[calc(100vh-2.5rem)] md:pl-7 md:pr-2 md:before:absolute md:before:bottom-0 md:before:left-0 md:before:top-0 md:before:w-px md:before:bg-gradient-to-b md:before:from-border/55 md:before:via-border/40 md:before:to-border/15">
+          <section className="relative min-w-0 overflow-x-clip p-3 sm:p-5 md:ml-5 md:min-h-[calc(100vh-2.5rem)] md:pl-7 md:pr-2 md:before:absolute md:before:bottom-0 md:before:left-0 md:before:top-0 md:before:w-px md:before:bg-gradient-to-b md:before:from-border/55 md:before:via-border/40 md:before:to-border/15">
             <div className="space-y-5">
               <header className="space-y-1">
                 <h1 className="text-xl font-semibold tracking-tight text-foreground">
                   {tabMeta.title}
                 </h1>
-                <p className="text-sm text-muted-foreground">{tabMeta.description}</p>
+                <p className="text-sm text-muted-foreground">
+                  {tabMeta.description}
+                </p>
               </header>
               {currentTab === "home" && (
                 <DeveloperHome
@@ -406,11 +428,200 @@ export default function PlatformShell({
                 />
               )}
               {currentTab === "api-keys" && <ApiKeysPanel baseUrl={baseUrl} />}
-              {currentTab === "wallet" && <Nip60WalletPanel baseUrl={baseUrl} />}
+              {currentTab === "wallet" && (
+                <Nip60WalletPanel baseUrl={baseUrl} />
+              )}
             </div>
           </section>
         </div>
       </div>
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-4 pb-[calc(0.95rem+env(safe-area-inset-bottom))] md:hidden">
+        <nav className="pointer-events-auto mx-auto grid w-full max-w-[30rem] grid-cols-5 gap-2 rounded-[1.5rem] border border-border/65 bg-background/80 p-2.5 shadow-[0_-16px_36px_-22px_rgba(0,0,0,0.9)] backdrop-blur-2xl supports-[backdrop-filter]:bg-background/72">
+          {tabs.map((tab) => {
+            const TabIcon = tab.icon;
+            const isActive = currentTab === tab.id;
+            return (
+              <Button
+                key={`mobile-${tab.id}`}
+                variant="ghost"
+                size="sm"
+                className={`group h-12 min-w-0 rounded-2xl px-0 transition-all duration-200 ${
+                  isActive
+                    ? "bg-foreground/10 text-foreground ring-1 ring-border/70"
+                    : "text-foreground/65 hover:bg-foreground/5 hover:text-foreground"
+                }`}
+                onClick={() => navigateToTab(tab.id)}
+                type="button"
+                aria-label={tab.label}
+                title={tab.label}
+                aria-current={isActive ? "page" : undefined}
+              >
+                <TabIcon
+                  className={`size-5 transition-all duration-200 ${
+                    isActive
+                      ? "scale-105 text-foreground"
+                      : "text-current group-hover:scale-105 group-hover:text-foreground"
+                  }`}
+                />
+              </Button>
+            );
+          })}
+          {(() => {
+            const isMoreActive = showMobileMoreDialog;
+            return (
+              <Button
+                key="mobile-more"
+                variant="ghost"
+                size="sm"
+                className={`group h-12 min-w-0 rounded-2xl px-0 transition-all duration-200 ${
+                  isMoreActive
+                    ? "bg-foreground/10 text-foreground ring-1 ring-border/70"
+                    : "text-foreground/65 hover:bg-foreground/5 hover:text-foreground"
+                }`}
+                onClick={() => setShowMobileMoreDialog(true)}
+                type="button"
+                aria-label="More"
+                title="More"
+                aria-current={isMoreActive ? "page" : undefined}
+              >
+                <MoreHorizontal
+                  className={`size-5 transition-all duration-200 ${
+                    isMoreActive
+                      ? "scale-105 text-foreground"
+                      : "text-current group-hover:scale-105 group-hover:text-foreground"
+                  }`}
+                />
+              </Button>
+            );
+          })()}
+        </nav>
+      </div>
+      <Drawer
+        open={showMobileMoreDialog}
+        onOpenChange={setShowMobileMoreDialog}
+      >
+        <DrawerContent className="data-[vaul-drawer-direction=bottom]:max-h-[90vh]">
+          <DrawerHeader className="text-left">
+            <DrawerTitle>More</DrawerTitle>
+            <DrawerDescription>
+              Docs, chat, account tools, and theme settings.
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="space-y-5 px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+            <section className="space-y-2.5">
+              <p className="text-xs font-medium text-muted-foreground">Links</p>
+              <Button
+                asChild
+                variant="outline"
+                size="lg"
+                className="h-11 w-full justify-between"
+              >
+                <a
+                  href="https://docs.routstr.com"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <span>Docs</span>
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              </Button>
+              <Button
+                asChild
+                variant="outline"
+                size="lg"
+                className="h-11 w-full justify-between"
+              >
+                <a
+                  href="https://chat.routstr.com"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <span>Chat App</span>
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              </Button>
+            </section>
+            <Separator className="bg-border/60" />
+            {isAuthenticated ? (
+              <section className="space-y-2.5">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Account
+                </p>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="h-11 w-full justify-start"
+                  onClick={() => {
+                    setShowMobileMoreDialog(false);
+                    setShowExportDialog(true);
+                  }}
+                  type="button"
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                  Export nsec
+                </Button>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="h-11 w-full justify-start"
+                  onClick={() => {
+                    setShowMobileMoreDialog(false);
+                    void logout();
+                  }}
+                  type="button"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  Sign out
+                </Button>
+              </section>
+            ) : (
+              <section className="space-y-2.5">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Account
+                </p>
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  className="h-11 w-full justify-start"
+                  onClick={() => {
+                    setShowMobileMoreDialog(false);
+                    onRequestLogin?.();
+                  }}
+                  type="button"
+                >
+                  <LogIn className="h-3.5 w-3.5" />
+                  Sign in
+                </Button>
+              </section>
+            )}
+            <Separator className="bg-border/60" />
+            <section className="space-y-2.5">
+              <p className="text-xs font-medium text-muted-foreground">Theme</p>
+              <div className="grid grid-cols-2 gap-2">
+                {themeTabs.map((themeOption) => {
+                  const ThemeIcon = themeOption.icon;
+                  const isActiveTheme = activeTheme === themeOption.value;
+                  return (
+                    <Button
+                      key={`mobile-theme-${themeOption.value}`}
+                      variant={isActiveTheme ? "secondary" : "outline"}
+                      size="lg"
+                      className="h-11 justify-start"
+                      onClick={() => setTheme(themeOption.value)}
+                      disabled={!themeMounted}
+                      type="button"
+                      aria-label={`Set ${themeOption.label.toLowerCase()} theme`}
+                    >
+                      <ThemeIcon className="h-3.5 w-3.5" />
+                      {themeOption.label}
+                    </Button>
+                  );
+                })}
+              </div>
+            </section>
+          </div>
+        </DrawerContent>
+      </Drawer>
       <Dialog
         open={showExportDialog}
         onOpenChange={(open) => {
@@ -478,8 +689,8 @@ export default function PlatformShell({
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Current account does not expose a private key. Use a local private-key
-              signer account to export nsec.
+              Current account does not expose a private key. Use a local
+              private-key signer account to export nsec.
             </p>
           )}
         </DialogContent>
