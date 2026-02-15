@@ -194,8 +194,7 @@ function normalizeBaseUrl(url: string): string {
 }
 
 function shouldAllowHttp(url: string): boolean {
-  if (!url.startsWith("http://")) return true;
-  return url.includes("localhost") || url.includes("127.0.0.1");
+  return !url.startsWith("http://");
 }
 
 function getProviderEndpoints(provider: DirectoryProvider): string[] {
@@ -969,7 +968,7 @@ export default function ApiKeysPanel({
           {Array.from({ length: 3 }).map((_, index) => (
             <div
               key={`api-key-skeleton-${index}`}
-              className="rounded-md border border-border bg-muted/50 p-3 animate-pulse"
+              className="rounded-xl border border-border bg-muted/50 p-3 animate-pulse"
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="space-y-2 flex-1 min-w-0">
@@ -996,7 +995,7 @@ export default function ApiKeysPanel({
             return (
               <div
                 key={keyId}
-                className="bg-muted/50 rounded-md border border-border overflow-hidden"
+                className="bg-muted/50 rounded-xl border border-border overflow-hidden"
               >
                 <div
                   className="flex items-center justify-between p-3 hover:bg-muted/60 cursor-pointer"

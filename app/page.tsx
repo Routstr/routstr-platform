@@ -133,8 +133,7 @@ function isOnionUrl(url: string): boolean {
 }
 
 function shouldAllowHttp(url: string): boolean {
-  if (!url.startsWith("http://")) return true;
-  return url.includes("localhost") || url.includes("127.0.0.1");
+  return !url.startsWith("http://");
 }
 
 function resolveImportBaseUrl(candidate: string | null): string {
@@ -172,17 +171,6 @@ function getProviderEndpoints(provider: DirectoryProvider): string[] {
   return endpoints;
 }
 
-function readDevCandidateEndpoints(): string[] {
-  if (typeof window === "undefined") return [];
-  const hostname = window.location.hostname.toLowerCase();
-  const isLocalHost =
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname.endsWith(".local");
-  if (!isLocalHost) return [];
-  return ["http://localhost:8000/", "http://127.0.0.1:8000/"];
-}
-
 function readKnownEndpointsFromStorage(): string[] {
   if (typeof window === "undefined") return [DEFAULT_BASE_URL];
 
@@ -198,9 +186,6 @@ function readKnownEndpointsFromStorage(): string[] {
 
   add(DEFAULT_BASE_URL);
   add(localStorage.getItem("platform_active_base_url"));
-  for (const endpoint of readDevCandidateEndpoints()) {
-    add(endpoint);
-  }
 
   const baseUrlsList = safeJsonParse<unknown[]>(
     localStorage.getItem(BASE_URLS_LIST_STORAGE_KEY),

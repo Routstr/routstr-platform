@@ -127,8 +127,7 @@ function isOnionUrl(url: string): boolean {
 }
 
 function shouldAllowHttp(url: string): boolean {
-  if (!url.startsWith("http://")) return true;
-  return url.includes("localhost") || url.includes("127.0.0.1");
+  return !url.startsWith("http://");
 }
 
 function getProviderEndpoints(provider: DirectoryProvider): string[] {

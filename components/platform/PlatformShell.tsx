@@ -13,6 +13,7 @@ import {
   KeyRound,
   LogIn,
   LogOut,
+  Network,
   MoreHorizontal,
   Monitor,
   Moon,
@@ -27,6 +28,7 @@ import { useAuth } from "@/context/AuthProvider";
 import { useAccountManager } from "@/components/providers/ClientProviders";
 import { DEFAULT_BASE_URL } from "@/lib/utils";
 import DeveloperHome from "@/components/platform/DeveloperHome";
+import NodesPanel from "@/components/platform/NodesPanel";
 import PlaygroundPanel from "@/components/platform/PlaygroundPanel";
 import ApiKeysPanel from "@/components/platform/ApiKeysPanel";
 import Nip60WalletPanel from "@/components/platform/Nip60WalletPanel";
@@ -48,7 +50,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 
-export type PlatformTab = "home" | "playground" | "api-keys" | "wallet";
+export type PlatformTab = "home" | "nodes" | "playground" | "api-keys" | "wallet";
 
 function isOnionUrl(url: string): boolean {
   if (!url) return false;
@@ -69,8 +71,13 @@ function normalizeBaseUrl(url: string): string {
   return withProtocol.endsWith("/") ? withProtocol : `${withProtocol}/`;
 }
 
+function shouldAllowHttp(url: string): boolean {
+  return !url.startsWith("http://");
+}
+
 const TAB_PATHS: Record<PlatformTab, string> = {
   home: "/home",
+  nodes: "/nodes",
   playground: "/playground",
   "api-keys": "/api-keys",
   wallet: "/wallet",
@@ -85,7 +92,11 @@ const TAB_META: Record<
 > = {
   home: {
     title: "Home",
-    description: "Quickstart, network coverage, and setup health checks.",
+    description: "Setup status and key health for your active endpoint.",
+  },
+  nodes: {
+    title: "Nodes",
+    description: "Browse Routstr endpoints, inspect node metadata, and review models.",
   },
   playground: {
     title: "Playground",
@@ -147,6 +158,7 @@ export default function PlatformShell({
   const isGuestMode = allowUnauthenticated && !isAuthenticated;
   const [themeMounted, setThemeMounted] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showSignOutDialog, setShowSignOutDialog] = useState(false);
   const [showMobileMoreDialog, setShowMobileMoreDialog] = useState(false);
   const [showNsec, setShowNsec] = useState(false);
   const [copiedNsec, setCopiedNsec] = useState(false);
@@ -154,7 +166,7 @@ export default function PlatformShell({
     if (typeof window === "undefined") return DEFAULT_BASE_URL;
     const saved = window.localStorage.getItem("platform_active_base_url");
     const normalized = normalizeBaseUrl(saved || DEFAULT_BASE_URL);
-    if (!normalized || isOnionUrl(normalized)) {
+    if (!normalized || isOnionUrl(normalized) || !shouldAllowHttp(normalized)) {
       return DEFAULT_BASE_URL;
     }
     return normalized;
@@ -171,6 +183,7 @@ export default function PlatformShell({
       const requestedTab = customEvent.detail?.tab;
       if (
         requestedTab === "home" ||
+        requestedTab === "nodes" ||
         requestedTab === "playground" ||
         requestedTab === "api-keys" ||
         requestedTab === "wallet"
@@ -204,6 +217,11 @@ export default function PlatformShell({
       icon: Home,
     },
     {
+      id: "nodes",
+      label: "Nodes",
+      icon: Network,
+    },
+    {
       id: "playground",
       label: "Playground",
       icon: Code2,
@@ -233,11 +251,17 @@ export default function PlatformShell({
   const handleBaseUrlChange = (nextBaseUrl: string) => {
     const normalized = normalizeBaseUrl(nextBaseUrl);
     const safeBaseUrl =
-      normalized && !isOnionUrl(normalized) ? normalized : DEFAULT_BASE_URL;
+      normalized && !isOnionUrl(normalized) && shouldAllowHttp(normalized)
+        ? normalized
+        : DEFAULT_BASE_URL;
     setBaseUrl(safeBaseUrl);
     if (typeof window !== "undefined") {
       window.localStorage.setItem("platform_active_base_url", safeBaseUrl);
     }
+  };
+  const handleConfirmSignOut = async () => {
+    setShowSignOutDialog(false);
+    await logout();
   };
   const themeTabs = [
     { value: "dark", label: "Dark", icon: Moon },
@@ -275,21 +299,21 @@ export default function PlatformShell({
   }
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-[linear-gradient(var(--platform-tint),var(--platform-tint)),radial-gradient(circle_at_10%_0%,var(--platform-glow-top),transparent_38%),radial-gradient(circle_at_90%_100%,var(--platform-glow-bottom),transparent_45%),var(--background)] text-foreground">
-      <div className="mx-auto w-full max-w-6xl px-3 py-4 pb-[calc(4.75rem+env(safe-area-inset-bottom))] sm:px-5 sm:py-5 md:pb-5">
-        <div className="grid min-w-0 items-start gap-4 md:grid-cols-[11.5rem_minmax(0,1fr)] md:gap-0">
-          <aside className="hidden min-w-0 space-y-5 md:sticky md:top-5 md:flex md:min-h-[calc(100vh-2.5rem)] md:flex-col md:self-start">
+    <div className="min-h-screen bg-[linear-gradient(var(--platform-tint),var(--platform-tint)),radial-gradient(circle_at_10%_0%,var(--platform-glow-top),transparent_38%),radial-gradient(circle_at_90%_100%,var(--platform-glow-bottom),transparent_45%),var(--background)] text-foreground md:h-screen md:overflow-hidden">
+      <div className="mx-auto w-full max-w-6xl px-3 py-4 pb-[calc(4.75rem+env(safe-area-inset-bottom))] sm:px-5 sm:py-5 md:h-full md:pb-5">
+        <div className="grid min-w-0 items-start gap-4 md:h-full md:grid-cols-[11.5rem_minmax(0,1fr)] md:gap-0">
+          <aside className="hidden min-w-0 space-y-5 md:sticky md:top-5 md:flex md:h-[calc(100vh-2.5rem)] md:flex-col md:self-start md:pt-5">
             <div className="space-y-2 px-1">
               <Button
                 onClick={() => navigateToTab("home")}
                 variant="ghost"
-                className="h-auto w-full justify-start px-0 text-left text-xl font-semibold"
+                className="h-auto w-full justify-start px-0 text-left text-xl font-semibold hover:bg-transparent"
                 type="button"
               >
                 Routstr Platform
               </Button>
               <p className="text-[11px] text-muted-foreground/75">
-                Developer Console
+                Routstr nodes, API keys, playground testing, and wallet operations.
               </p>
             </div>
 
@@ -343,82 +367,97 @@ export default function PlatformShell({
                   </a>
                 </Button>
               </div>
-              {isAuthenticated ? (
-                <>
+              <div className="mt-3 space-y-3 md:mt-auto">
+                {isAuthenticated ? (
+                  <div className="space-y-1">
+                    <Button
+                      onClick={() => setShowExportDialog(true)}
+                      variant="ghost"
+                      className="w-full justify-start"
+                      type="button"
+                    >
+                      <KeyRound className="h-3.5 w-3.5" />
+                      Export nsec
+                    </Button>
+                    <Button
+                      onClick={() => setShowSignOutDialog(true)}
+                      variant="ghost"
+                      className="w-full justify-start"
+                      type="button"
+                    >
+                      <LogOut className="h-3.5 w-3.5" />
+                      Sign out
+                    </Button>
+                  </div>
+                ) : (
                   <Button
-                    onClick={() => setShowExportDialog(true)}
-                    variant="ghost"
-                    className="mt-3 w-full justify-start"
+                    onClick={() => onRequestLogin?.()}
+                    variant="secondary"
+                    className="w-full justify-start"
                     type="button"
                   >
-                    <KeyRound className="h-3.5 w-3.5" />
-                    Export nsec
+                    <LogIn className="h-3.5 w-3.5" />
+                    Sign in
                   </Button>
-                  <Button
-                    onClick={() => void logout()}
-                    variant="ghost"
-                    className="mt-1 w-full justify-start"
-                    type="button"
+                )}
+                <div className="px-2 md:px-1">
+                  <Tabs
+                    value={activeTheme}
+                    onValueChange={(value) =>
+                      setTheme(value as "light" | "dark" | "system" | "red")
+                    }
                   >
-                    <LogOut className="h-3.5 w-3.5" />
-                    Sign out
-                  </Button>
-                </>
-              ) : (
-                <Button
-                  onClick={() => onRequestLogin?.()}
-                  variant="secondary"
-                  className="mt-3 w-full justify-start"
-                  type="button"
-                >
-                  <LogIn className="h-3.5 w-3.5" />
-                  Sign in
-                </Button>
-              )}
-              <div className="mt-3 px-2 md:mt-auto md:px-1">
-                <Tabs
-                  value={activeTheme}
-                  onValueChange={(value) =>
-                    setTheme(value as "light" | "dark" | "system" | "red")
-                  }
-                >
-                  <TabsList>
-                    {themeTabs.map((themeOption) => {
-                      const ThemeIcon = themeOption.icon;
-                      return (
-                        <TabsTrigger
-                          key={themeOption.value}
-                          value={themeOption.value}
-                          aria-label={`Set ${themeOption.label.toLowerCase()} theme`}
-                          title={themeOption.label}
-                          disabled={!themeMounted}
-                          className="w-8"
-                        >
-                          <ThemeIcon className="h-3.5 w-3.5" />
-                          <span className="sr-only">{themeOption.label}</span>
-                        </TabsTrigger>
-                      );
-                    })}
-                  </TabsList>
-                </Tabs>
+                    <TabsList>
+                      {themeTabs.map((themeOption) => {
+                        const ThemeIcon = themeOption.icon;
+                        return (
+                          <TabsTrigger
+                            key={themeOption.value}
+                            value={themeOption.value}
+                            aria-label={`Set ${themeOption.label.toLowerCase()} theme`}
+                            title={themeOption.label}
+                            disabled={!themeMounted}
+                            className="w-8"
+                          >
+                            <ThemeIcon className="h-3.5 w-3.5" />
+                            <span className="sr-only">{themeOption.label}</span>
+                          </TabsTrigger>
+                        );
+                      })}
+                    </TabsList>
+                  </Tabs>
+                </div>
               </div>
             </div>
           </aside>
 
-          <section className="relative min-w-0 overflow-x-clip p-3 sm:p-5 md:ml-5 md:min-h-[calc(100vh-2.5rem)] md:pl-7 md:pr-2 md:before:absolute md:before:bottom-0 md:before:left-0 md:before:top-0 md:before:w-px md:before:bg-gradient-to-b md:before:from-border/55 md:before:via-border/40 md:before:to-border/15">
-            <div className="space-y-5">
-              <header className="space-y-1">
-                <h1 className="text-xl font-semibold tracking-tight text-foreground">
-                  {tabMeta.title}
-                </h1>
-                <p className="text-sm text-muted-foreground">
-                  {tabMeta.description}
-                </p>
-              </header>
+          <section
+            className={`relative min-w-0 overflow-x-clip p-3 sm:p-5 md:ml-5 md:h-[calc(100vh-2.5rem)] md:pl-7 md:pr-2 md:before:absolute md:before:bottom-0 md:before:left-0 md:before:top-0 md:before:w-px md:before:bg-gradient-to-b md:before:from-border/55 md:before:via-border/40 md:before:to-border/15 ${
+              currentTab === "nodes"
+                ? "md:overflow-hidden"
+                : "md:overflow-y-auto md:overscroll-y-none"
+            }`}
+          >
+            <div
+              className={`space-y-5 ${
+                currentTab === "nodes"
+                  ? "md:flex md:h-full md:min-h-0 md:flex-col"
+                  : ""
+              }`}
+            >
+              {currentTab !== "home" && (
+                <header className="space-y-1">
+                  <h1 className="text-xl font-semibold tracking-tight text-foreground">
+                    {tabMeta.title}
+                  </h1>
+                  <p className="text-sm text-muted-foreground">
+                    {tabMeta.description}
+                  </p>
+                </header>
+              )}
               {currentTab === "home" && (
                 <DeveloperHome
                   baseUrl={baseUrl}
-                  onBaseUrlChange={handleBaseUrlChange}
                 />
               )}
               {currentTab === "playground" && (
@@ -426,6 +465,13 @@ export default function PlatformShell({
                   baseUrl={baseUrl}
                   onBaseUrlChange={handleBaseUrlChange}
                 />
+              )}
+              {currentTab === "nodes" && (
+                <div className="md:min-h-0 md:flex-1">
+                  <NodesPanel
+                    baseUrl={baseUrl}
+                  />
+                </div>
               )}
               {currentTab === "api-keys" && <ApiKeysPanel baseUrl={baseUrl} />}
               {currentTab === "wallet" && (
@@ -436,7 +482,10 @@ export default function PlatformShell({
         </div>
       </div>
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-4 pb-[calc(0.95rem+env(safe-area-inset-bottom))] md:hidden">
-        <nav className="pointer-events-auto mx-auto grid w-full max-w-[30rem] grid-cols-5 gap-2 rounded-[1.5rem] border border-border/65 bg-background/80 p-2.5 shadow-[0_-16px_36px_-22px_rgba(0,0,0,0.9)] backdrop-blur-2xl supports-[backdrop-filter]:bg-background/72">
+        <nav
+          className="pointer-events-auto mx-auto grid w-full max-w-[34rem] gap-2 rounded-[1.5rem] border border-border/65 bg-background/80 p-2.5 shadow-[0_-16px_36px_-22px_rgba(0,0,0,0.9)] backdrop-blur-2xl supports-[backdrop-filter]:bg-background/72"
+          style={{ gridTemplateColumns: `repeat(${tabs.length + 1}, minmax(0, 1fr))` }}
+        >
           {tabs.map((tab) => {
             const TabIcon = tab.icon;
             const isActive = currentTab === tab.id;
@@ -566,7 +615,7 @@ export default function PlatformShell({
                   className="h-11 w-full justify-start"
                   onClick={() => {
                     setShowMobileMoreDialog(false);
-                    void logout();
+                    setShowSignOutDialog(true);
                   }}
                   type="button"
                 >
@@ -622,6 +671,36 @@ export default function PlatformShell({
           </div>
         </DrawerContent>
       </Drawer>
+      <Dialog
+        open={showSignOutDialog}
+        onOpenChange={setShowSignOutDialog}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Sign out?</DialogTitle>
+            <DialogDescription>
+              You will be signed out of this device.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button
+              onClick={() => setShowSignOutDialog(false)}
+              variant="ghost"
+              type="button"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void handleConfirmSignOut()}
+              variant="destructive"
+              type="button"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Sign out
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={showExportDialog}
         onOpenChange={(open) => {
