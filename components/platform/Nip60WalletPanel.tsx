@@ -6,6 +6,9 @@ import { useObservableState } from "applesauce-react/hooks";
 import WalletTab from "@/components/wallet/WalletTab";
 import { ModalShell } from "@/components/ui/ModalShell";
 import { useAccountManager } from "@/components/providers/ClientProviders";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
 import { getStorageBoolean, setStorageBoolean } from "@/lib/storage";
 import {
   getProofsBalanceSats,
@@ -26,6 +29,7 @@ import {
 const CHAT_NIP60_STORAGE_KEY = "usingNip60";
 const LEGACY_PLATFORM_NIP60_STORAGE_KEY = "platform_use_nip60_wallet";
 const FALLBACK_MINT_URL = "https://mint.minibits.cash/Bitcoin";
+const PLATFORM_ACTIVE_MINT_STORAGE_KEY = "platform_active_mint_url";
 
 interface StoredProofWithMint {
   amount?: number;
@@ -174,6 +178,12 @@ export default function Nip60WalletPanel({
       window.removeEventListener("storage", refreshWalletState);
     };
   }, []);
+
+  useEffect(() => {
+    const normalizedMint = normalizeMintUrl(mintUrl);
+    if (!normalizedMint) return;
+    window.localStorage.setItem(PLATFORM_ACTIVE_MINT_STORAGE_KEY, normalizedMint);
+  }, [mintUrl]);
 
   const syncProofsFromNip60 = useCallback(async () => {
     if (!syncAccount) {
@@ -405,18 +415,19 @@ export default function Nip60WalletPanel({
           Synced from NIP-60 token and wallet events for your active account.
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-          <button
+          <Button
             onClick={() => {
               if (!syncAccount || isSyncingNip60) return;
               void syncProofsFromNip60();
             }}
             disabled={!syncAccount || isSyncingNip60}
-            className="platform-btn-muted gap-1 px-2.5 py-1.5 text-xs"
+            variant="secondary"
+            size="sm"
             type="button"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isSyncingNip60 ? "animate-spin" : ""}`} />
             {isSyncingNip60 ? "Syncing..." : "Sync now"}
-          </button>
+          </Button>
           {lastSyncedAt ? (
             <span className="text-muted-foreground">
               Last sync: {new Date(lastSyncedAt).toLocaleTimeString()}
@@ -428,20 +439,21 @@ export default function Nip60WalletPanel({
         ) : null}
       </div>
 
-      <div className="platform-card-soft p-4">
+      <Card className="gap-0 bg-muted/20 p-4 py-4 shadow-none">
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <h3 className="text-sm font-medium text-foreground/85">Mints</h3>
           <div className="ml-auto flex items-center gap-1.5">
-            <button
+            <Button
               onClick={() => setShowAddMintInput((previous) => !previous)}
               disabled={!syncAccount || isSavingMints || isLoadingMints}
-              className="platform-btn-icon h-8 w-8"
+              variant="outline"
+              size="icon-sm"
               aria-label="Add mint"
               type="button"
             >
               <Plus className="h-4 w-4" />
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={() => {
                 setShowDeleteMintDialog(true);
               }}
@@ -452,7 +464,8 @@ export default function Nip60WalletPanel({
                 availableMints.length <= 1 ||
                 !availableMints.includes(mintUrl)
               }
-              className="platform-btn-icon h-8 w-8"
+              variant="outline"
+              size="icon-sm"
               aria-label="Delete selected mint"
               title={
                 availableMints.length <= 1
@@ -462,7 +475,7 @@ export default function Nip60WalletPanel({
               type="button"
             >
               <Trash2 className="h-4 w-4" />
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -521,7 +534,7 @@ export default function Nip60WalletPanel({
         {showAddMintInput ? (
           <div className="mt-3 border-t border-border pt-3">
             <div className="flex flex-col gap-2 sm:flex-row">
-              <input
+              <Input
                 type="text"
                 value={customMintUrl}
                 onChange={(event) => setCustomMintUrl(event.target.value)}
@@ -531,19 +544,19 @@ export default function Nip60WalletPanel({
                     void handleAddMint();
                   }
                 }}
-                className="platform-input flex-1"
+                className="flex-1"
                 placeholder="https://mint.example.com"
               />
-              <button
+              <Button
                 onClick={() => {
                   void handleAddMint();
                 }}
                 disabled={!customMintUrl.trim() || isSavingMints || isLoadingMints}
-                className="platform-btn-secondary"
+                variant="secondary"
                 type="button"
               >
                 {isSavingMints ? "Saving..." : "Add mint"}
-              </button>
+              </Button>
             </div>
           </div>
         ) : null}
@@ -553,7 +566,7 @@ export default function Nip60WalletPanel({
             Mint editing is available after signer login.
           </p>
         ) : null}
-      </div>
+      </Card>
 
       <ModalShell
         open={showDeleteMintDialog}
@@ -571,15 +584,15 @@ export default function Nip60WalletPanel({
           your wallet mint list?
         </p>
         <div className="flex justify-end gap-2">
-          <button
+          <Button
             onClick={() => setShowDeleteMintDialog(false)}
-            className="platform-btn-ghost px-4"
+            variant="ghost"
             disabled={isSavingMints}
             type="button"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={() => {
               void (async () => {
                 const didDelete = await handleRemoveMint(mintUrl);
@@ -588,12 +601,12 @@ export default function Nip60WalletPanel({
                 }
               })();
             }}
-            className="platform-btn-muted px-4"
+            variant="secondary"
             disabled={isSavingMints || availableMints.length <= 1}
             type="button"
           >
             {isSavingMints ? "Deleting..." : "Delete"}
-          </button>
+          </Button>
         </div>
       </ModalShell>
 

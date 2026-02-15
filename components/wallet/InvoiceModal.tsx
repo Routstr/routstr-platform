@@ -6,6 +6,8 @@ import { QRCodeSVG } from "qrcode.react";
 import { ModalShell } from "@/components/ui/ModalShell";
 import { useBitcoinConnectStatus } from "@/hooks/useBitcoinConnect";
 import BitcoinConnectStatusRow from "@/components/wallet/BitcoinConnectStatusRow";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 
 interface MintQuoteLike {
   quote: string;
@@ -84,14 +86,15 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
     >
       <div className="flex justify-between items-center p-4 border-b border-border shrink-0">
         <h3 className="text-lg font-semibold text-foreground">Lightning Invoice</h3>
-        <button
+        <Button
           onClick={closeModal}
-          className="platform-btn-ghost h-8 w-8 p-0"
+          variant="ghost"
+          size="icon-sm"
           type="button"
           aria-label="Close invoice modal"
         >
           <X className="h-5 w-5" />
-        </button>
+        </Button>
       </div>
 
       <div className="p-6 space-y-4 overflow-y-auto">
@@ -104,7 +107,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
           />
         )}
 
-        <div className="platform-card-soft flex items-center justify-center p-4">
+        <Card className="gap-0 bg-muted/20 flex items-center justify-center p-4 py-4 shadow-none">
           <div className="w-56 h-56 flex items-center justify-center p-2 rounded-md">
             <QRCodeSVG
               value={mintInvoice}
@@ -114,7 +117,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               className="text-foreground"
             />
           </div>
-        </div>
+        </Card>
 
         <div className="space-y-4">
           <div className="flex justify-between items-center">
@@ -125,7 +128,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
           </div>
 
           {isAutoChecking && (
-            <div className="platform-card-soft flex items-center justify-between p-3">
+            <Card className="gap-0 bg-muted/20 flex items-center justify-between p-3 py-3 shadow-none">
               <span className="text-xs text-muted-foreground">
                 After payment, tokens will be automatically minted
               </span>
@@ -141,7 +144,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   />
                 </svg>
               </span>
-            </div>
+            </Card>
           )}
 
           <div className="mt-2">
@@ -152,34 +155,37 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
           </div>
 
           <div className="flex gap-2 mt-4">
-            <button
+            <Button
               onClick={() => {
                 void navigator.clipboard.writeText(mintInvoice);
               }}
-              className="platform-btn-secondary flex-1 px-4"
+              variant="secondary"
+              className="flex-1"
               type="button"
             >
               Copy Invoice
-            </button>
+            </Button>
             {onPayWithWallet && (
-              <button
+              <Button
                 onClick={() => {
                   void onPayWithWallet(mintInvoice);
                 }}
                 disabled={Boolean(isPayingWithWallet)}
-                className="platform-btn-secondary flex-1 px-4"
+                variant="secondary"
+                className="flex-1"
                 type="button"
               >
                 {isPayingWithWallet ? "Paying..." : "Pay with wallet"}
-              </button>
+              </Button>
             )}
-            <button
+            <Button
               onClick={closeModal}
-              className="platform-btn-ghost flex-1 px-4"
+              variant="ghost"
+              className="flex-1"
               type="button"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       </div>

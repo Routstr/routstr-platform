@@ -19,6 +19,7 @@ import {
   readWalletInvoices,
   type WalletInvoice,
 } from "@/lib/platformWallet";
+import { Button } from "@/components/ui/button";
 
 interface InvoiceHistoryProps {
   mintUrl?: string;
@@ -160,17 +161,18 @@ const InvoiceHistory: React.FC<InvoiceHistoryProps> = ({
           </div>
         </div>
         <div className="mt-3">
-          <button
+          <Button
             onClick={() => {
               if (onCheckNow) void onCheckNow();
             }}
             disabled={isChecking || !onCheckNow}
-            className="platform-btn-secondary gap-2 px-3 py-1 text-xs"
+            variant="secondary"
+            size="sm"
             type="button"
           >
             <RefreshCw className={`h-3 w-3 ${isChecking ? "animate-spin" : ""}`} />
             {isChecking ? "Checking..." : "Check Now"}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -212,17 +214,18 @@ const InvoiceHistory: React.FC<InvoiceHistoryProps> = ({
                     <code className="text-xs text-muted-foreground font-mono">
                       {truncateInvoice(invoice.paymentRequest)}
                     </code>
-                    <button
+                    <Button
                       onClick={() => {
                         void navigator.clipboard.writeText(invoice.paymentRequest);
                         toast.success("Copied to clipboard");
                       }}
-                      className="text-muted-foreground hover:text-foreground transition-colors"
+                      variant="ghost"
+                      size="icon-xs"
                       title="Copy invoice"
                       type="button"
                     >
                       <Copy className="h-3 w-3" />
-                    </button>
+                    </Button>
                   </div>
 
                   <div className="flex items-center gap-2 mt-2">
@@ -239,36 +242,39 @@ const InvoiceHistory: React.FC<InvoiceHistoryProps> = ({
                           <span className="text-xs text-muted-foreground">
                             Delete?
                           </span>
-                          <button
+                          <Button
                             onClick={() => {
                               deleteWalletInvoice(invoice.id);
                               setConfirmDelete(null);
                               toast.success("Invoice deleted");
                               refreshInvoices();
                             }}
-                            className="text-xs text-foreground hover:opacity-80"
+                            variant="ghost"
+                            size="xs"
                             type="button"
                           >
                             Yes
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             onClick={() => setConfirmDelete(null)}
-                            className="text-xs text-muted-foreground hover:text-foreground"
+                            variant="ghost"
+                            size="xs"
                             type="button"
                           >
                             No
-                          </button>
+                          </Button>
                         </div>
                       ) : (
-                        <button
+                        <Button
                           onClick={() => setConfirmDelete(invoice.id)}
-                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                          variant="ghost"
+                          size="xs"
                           title="Delete invoice"
                           type="button"
                         >
                           <Trash2 className="h-3 w-3" />
                           Delete
-                        </button>
+                        </Button>
                       )
                     ) : null}
                   </div>

@@ -18,6 +18,16 @@ import {
   PLATFORM_WALLET_UPDATED_EVENT,
 } from "@/lib/platformWallet";
 import { DEFAULT_BASE_URL } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
 
 type NodeInfo = {
   name: string;
@@ -543,6 +553,30 @@ export default function DeveloperHome({
   const defaultModelId = useMemo(() => {
     return activeSummary?.defaultModelId || "openai/gpt-4o-mini";
   }, [activeSummary]);
+  const activeModelOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return (activeSummary?.models || []).reduce<Array<{ id: string; label: string }>>(
+      (accumulator, model) => {
+        const modelId = typeof model?.id === "string" ? model.id.trim() : "";
+        if (!modelId || seen.has(modelId)) return accumulator;
+        seen.add(modelId);
+
+        const modelName = typeof model?.name === "string" ? model.name.trim() : "";
+        const label =
+          modelName && modelName !== modelId
+            ? `${modelName} (${modelId})`
+            : modelId;
+
+        accumulator.push({ id: modelId, label });
+        return accumulator;
+      },
+      []
+    );
+  }, [activeSummary]);
+  const [selectedModelId, setSelectedModelId] = useState<string>(
+    "openai/gpt-4o-mini"
+  );
+  const modelForRequests = selectedModelId || defaultModelId;
 
   const routableNodeSummaries = useMemo(() => {
     const summaries = nodeSummaries || [];
@@ -605,6 +639,23 @@ export default function DeveloperHome({
   }, [storedApiKeys]);
 
   useEffect(() => {
+    if (activeModelOptions.length === 0) {
+      setSelectedModelId(defaultModelId);
+      return;
+    }
+
+    setSelectedModelId((current) => {
+      if (activeModelOptions.some((model) => model.id === current)) {
+        return current;
+      }
+      if (activeModelOptions.some((model) => model.id === defaultModelId)) {
+        return defaultModelId;
+      }
+      return activeModelOptions[0].id;
+    });
+  }, [activeModelOptions, defaultModelId, normalizedBaseUrl]);
+
+  useEffect(() => {
     setSmokeTest((current) => {
       if (current.status === "pending") return current;
       return {
@@ -613,7 +664,7 @@ export default function DeveloperHome({
         message: null,
       };
     });
-  }, [normalizedBaseUrl, defaultModelId]);
+  }, [normalizedBaseUrl, modelForRequests]);
 
   const [isRefreshingDirectory, setIsRefreshingDirectory] = useState(false);
 
@@ -665,7 +716,7 @@ export default function DeveloperHome({
           Authorization: `Bearer ${primaryEndpointKey.key}`,
         },
         body: JSON.stringify({
-          model: defaultModelId,
+          model: modelForRequests,
           messages: [
             { role: "system", content: "You are Routstr health check." },
             { role: "user", content: "Reply with one word: pong" },
@@ -717,14 +768,14 @@ export default function DeveloperHome({
       '  -H "Authorization: Bearer YOUR_API_KEY"',
       '  -H "Content-Type: application/json"',
       "  -d '{",
-      `    \"model\": \"${defaultModelId}\",`,
+      `    \"model\": \"${modelForRequests}\",`,
       '    \"messages\": [',
       '      {\"role\":\"system\",\"content\":\"You are Routstr.\"},',
       '      {\"role\":\"user\",\"content\":\"Ping the platform\"}',
       "    ]",
       "  }'",
     ].join("\n");
-  }, [defaultModelId, normalizedBaseUrl]);
+  }, [modelForRequests, normalizedBaseUrl]);
 
   const smokeStatusLabel =
     smokeTest.status === "ok"
@@ -783,7 +834,7 @@ export default function DeveloperHome({
 
   return (
     <div className="space-y-5">
-      <section className="platform-card relative overflow-hidden p-6">
+      <Card className="gap-0 relative overflow-hidden p-6">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.12),transparent_48%),radial-gradient(circle_at_bottom_left,rgba(16,185,129,0.10),transparent_44%)]" />
         <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-2 max-w-3xl">
@@ -791,9 +842,8 @@ export default function DeveloperHome({
             <p className="text-sm text-muted-foreground">{heroSummary}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button
+            <Button
               onClick={primaryAction}
-              className="platform-btn-primary px-3.5"
               type="button"
             >
               {smokeTest.status === "pending" ? (
@@ -802,19 +852,19 @@ export default function DeveloperHome({
                 <KeyRound className="h-4 w-4" />
               )}
               {primaryActionLabel}
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={() => navigateToTab("api-keys")}
-              className="platform-btn-muted px-3.5"
+              variant="secondary"
               type="button"
             >
               Open API Keys
-            </button>
+            </Button>
           </div>
         </div>
-      </section>
+      </Card>
 
-      <section className="platform-card space-y-4 p-5">
+      <Card className="gap-0 space-y-4 p-5">
         <div className="space-y-1">
           <h2 className="text-lg font-semibold tracking-tight">Quickstart</h2>
           <p className="text-sm text-muted-foreground">{quickstartSummary}</p>
@@ -836,13 +886,14 @@ export default function DeveloperHome({
               <StepStatusIcon tone={stepOneTone} />
             </div>
             <div className="mt-auto pt-3">
-              <button
+              <Button
                 onClick={() => navigateToTab("api-keys")}
-                className="platform-btn-secondary self-start gap-1 px-2.5 py-1.5 text-xs"
+                variant="secondary"
+                size="sm"
                 type="button"
               >
                 {hasEndpointKey ? "Manage keys" : "Create API key"}
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -863,13 +914,14 @@ export default function DeveloperHome({
               <StepStatusIcon tone={stepTwoTone} />
             </div>
             <div className="mt-auto pt-3">
-              <button
+              <Button
                 onClick={() => navigateToTab("api-keys")}
-                className="platform-btn-secondary self-start gap-1 px-2.5 py-1.5 text-xs"
+                variant="secondary"
+                size="sm"
                 type="button"
               >
                 {hasUsableEndpointKey ? "View balances" : "Top up key"}
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -892,21 +944,22 @@ export default function DeveloperHome({
               <StepStatusIcon tone={stepThreeTone} />
             </div>
             <div className="mt-auto pt-3">
-              <button
+              <Button
                 onClick={() => void runSmokeTest()}
                 disabled={!hasEndpointKey || smokeTest.status === "pending"}
-                className="platform-btn-secondary self-start gap-1 px-2.5 py-1.5 text-xs"
+                variant="secondary"
+                size="sm"
                 type="button"
               >
                 {smokeTest.status === "pending" ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : null}
                 Send test request
-              </button>
+              </Button>
             </div>
           </div>
         </div>
-      </section>
+      </Card>
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <div className="rounded-xl border border-border/70 bg-card p-3">
@@ -932,27 +985,25 @@ export default function DeveloperHome({
         </div>
         <div className="rounded-xl border border-border/70 bg-card p-3">
           <p className="text-xs text-muted-foreground">Wallet</p>
-          <p className="mt-1 text-sm font-medium">
-            {walletSummary.isSynced ? "Synced" : "Needs attention"}
-          </p>
-          <div className="mt-1 flex items-center justify-between gap-2">
+          <div className="mt-2 flex items-center justify-between gap-2">
             <span className="text-xs text-muted-foreground">
               {walletSummary.balanceSats.toLocaleString()} sats
             </span>
-            <button
+            <Button
               onClick={() => navigateToTab("wallet")}
-              className="platform-btn-secondary gap-1 px-2 py-1 text-xs"
+              variant="secondary"
+              size="sm"
               type="button"
             >
               <Wallet className="h-3.5 w-3.5" />
               Open
-            </button>
+            </Button>
           </div>
         </div>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
-        <div className="platform-card flex h-full flex-col p-5 lg:h-[34rem]">
+        <Card className="gap-0 flex h-full flex-col p-5 lg:h-[34rem]">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-lg font-semibold tracking-tight">Request Setup</h2>
             <span className={`rounded-full border px-2.5 py-1 text-xs ${smokeStatusClass}`}>
@@ -961,11 +1012,11 @@ export default function DeveloperHome({
           </div>
 
           <div className="mt-4 flex-1 min-h-0 space-y-4 overflow-auto pr-1">
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="grid gap-3 sm:grid-cols-2">
             <label className="space-y-1 sm:col-span-2">
               <span className="text-xs text-muted-foreground">Default request endpoint</span>
               <div className="flex items-center gap-2">
-                <input
+                <Input
                   value={normalizedBaseUrl}
                   placeholder={normalizedBaseUrl}
                   onChange={(event) => {
@@ -973,23 +1024,46 @@ export default function DeveloperHome({
                     if (!normalized || isOnionUrl(normalized)) return;
                     onBaseUrlChange(normalized);
                   }}
-                  className="platform-input grow"
+                  className="grow"
                 />
-                <button
+                <Button
                   onClick={() => void handleCopy(normalizedBaseUrl)}
-                  className="platform-btn-icon"
+                  variant="outline"
+                  size="icon"
                   type="button"
                   title="Copy endpoint"
                 >
                   <Copy className="h-4 w-4" />
-                </button>
+                </Button>
               </div>
             </label>
 
-            <div className="rounded-md border border-border bg-muted/20 p-3">
-              <p className="text-xs text-muted-foreground">Default model</p>
-              <p className="mt-1 text-sm font-mono break-all">{defaultModelId}</p>
-            </div>
+            <label className="space-y-1">
+              <span className="text-xs text-muted-foreground">Request model</span>
+              <Select
+                value={modelForRequests}
+                onValueChange={setSelectedModelId}
+                disabled={activeModelOptions.length === 0}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select model" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeModelOptions.length === 0 ? (
+                    <SelectItem value={modelForRequests}>
+                      {modelForRequests}
+                    </SelectItem>
+                  ) : (
+                    activeModelOptions.map((model) => (
+                      <SelectItem key={model.id} value={model.id}>
+                        {model.label}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </label>
+
             <div className="rounded-md border border-border bg-muted/20 p-3">
               <p className="text-xs text-muted-foreground">Key used for test</p>
               <p className="mt-1 text-sm font-mono break-all">
@@ -1004,18 +1078,17 @@ export default function DeveloperHome({
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <button
+            <Button
               onClick={() => void handleCopy(curlSnippet)}
-              className="platform-btn-muted"
+              variant="secondary"
               type="button"
             >
               <Copy className="h-4 w-4" />
               Copy curl
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={() => void runSmokeTest()}
               disabled={!hasEndpointKey || smokeTest.status === "pending"}
-              className="platform-btn-primary"
               type="button"
             >
               {smokeTest.status === "pending" ? (
@@ -1024,16 +1097,17 @@ export default function DeveloperHome({
                 <RefreshCw className="h-4 w-4" />
               )}
               Send test request
-            </button>
-            <a
-              href="https://docs.routstr.com"
-              target="_blank"
-              rel="noreferrer"
-              className="platform-btn-ghost"
-            >
-              <ExternalLink className="h-4 w-4" />
-              Docs
-            </a>
+            </Button>
+            <Button asChild variant="ghost">
+              <a
+                href="https://docs.routstr.com"
+                target="_blank"
+                rel="noreferrer"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Docs
+              </a>
+            </Button>
           </div>
 
           {smokeTest.checkedAt ? (
@@ -1041,9 +1115,9 @@ export default function DeveloperHome({
               Last checked: {new Date(smokeTest.checkedAt).toLocaleTimeString()}
             </p>
           ) : null}
-        </div>
+        </Card>
 
-        <div className="platform-card flex h-full flex-col p-5 lg:h-[34rem]">
+        <Card className="gap-0 flex h-full flex-col p-5 lg:h-[34rem]">
           <div className="flex items-center justify-between gap-2">
             <div>
               <h2 className="text-lg font-semibold tracking-tight">Network Coverage</h2>
@@ -1051,19 +1125,20 @@ export default function DeveloperHome({
                 Discovered {coverageSummary.discoveredCount} endpoints, reachable {coverageSummary.reachableCount}.
               </p>
             </div>
-            <button
+            <Button
               onClick={handleRefreshDirectory}
               disabled={
                 isRefreshingDirectory || isDirectoryLoading || isSummariesLoading
               }
-              className="platform-btn-secondary gap-1 px-2 py-1 text-xs"
+              variant="secondary"
+              size="sm"
               type="button"
             >
               <RefreshCw
                 className={`h-3.5 w-3.5 ${isRefreshingDirectory ? "animate-spin" : ""}`}
               />
               Refresh
-            </button>
+            </Button>
           </div>
 
           <div className="mt-4 flex-1 min-h-0">
@@ -1110,22 +1185,24 @@ export default function DeveloperHome({
                           </p>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <button
+                          <Button
                             onClick={() => onBaseUrlChange(withTrailingSlash(summary.endpoint))}
-                            className="platform-btn-secondary gap-1 px-2 py-1 text-xs"
+                            variant="secondary"
+                            size="sm"
                             type="button"
                             disabled={!isActive && !canRoute}
                           >
                             {isActive ? "Using" : canRoute ? "Use" : "No models"}
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             onClick={() => void handleCopy(withTrailingSlash(summary.endpoint))}
-                            className="platform-btn-icon h-7 w-7"
+                            variant="outline"
+                            size="icon-sm"
                             type="button"
                             title="Copy endpoint"
                           >
                             <Copy className="h-3.5 w-3.5" />
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     </div>
@@ -1134,7 +1211,7 @@ export default function DeveloperHome({
               </div>
             )}
           </div>
-        </div>
+        </Card>
       </section>
     </div>
   );

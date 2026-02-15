@@ -22,6 +22,24 @@ import { DEFAULT_BASE_URL } from "@/lib/utils";
 import { ModalShell } from "@/components/ui/ModalShell";
 import SettingsDialog from "@/components/ui/SettingsDialog";
 import NodeKeyWorkflows from "@/components/platform/NodeKeyWorkflows";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export interface StoredApiKey {
   key: string;
@@ -62,7 +80,6 @@ const DEFAULT_SYNC_RELAYS = [
   "wss://relay.damus.io",
   "wss://relay.nostr.band",
 ];
-
 type CloudSyncCapableAccount = {
   pubkey: string;
   signEvent: (event: EventTemplate) => Promise<NostrEvent>;
@@ -412,23 +429,21 @@ export default function ApiKeysPanel({
   const [availableBaseUrls, setAvailableBaseUrls] = useState<string[]>([
     normalizedBaseUrl,
   ]);
-  const [selectedCreateBaseUrl, setSelectedCreateBaseUrl] = useState(normalizedBaseUrl);
   const [selectedAddBaseUrl, setSelectedAddBaseUrl] = useState(normalizedBaseUrl);
 
   const [storedApiKeys, setStoredApiKeys] = useState<StoredApiKey[]>([]);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  const [newApiLabel, setNewApiLabel] = useState("");
-  const [newCashuToken, setNewCashuToken] = useState("");
-
   const [manualApiLabel, setManualApiLabel] = useState("");
   const [manualApiKey, setManualApiKey] = useState("");
 
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showTopupDialog, setShowTopupDialog] = useState(false);
+  const [showLightningWorkflowDialog, setShowLightningWorkflowDialog] = useState(false);
+  const [showChildWorkflowDialog, setShowChildWorkflowDialog] = useState(false);
+  const [activateCreateWorkflowSignal, setActivateCreateWorkflowSignal] = useState(0);
 
   const [keyToDelete, setKeyToDelete] = useState<StoredApiKey | null>(null);
   const [keyToTopup, setKeyToTopup] = useState<StoredApiKey | null>(null);
@@ -437,7 +452,6 @@ export default function ApiKeysPanel({
   const [editingLabelKey, setEditingLabelKey] = useState<string | null>(null);
   const [editingLabelValue, setEditingLabelValue] = useState("");
 
-  const [isCreating, setIsCreating] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [isRefreshingAll, setIsRefreshingAll] = useState(false);
   const [isRefreshingKey, setIsRefreshingKey] = useState<string | null>(null);
@@ -587,11 +601,6 @@ export default function ApiKeysPanel({
       if (cancelled) return;
 
       setAvailableBaseUrls(finalList);
-      setSelectedCreateBaseUrl((prev) => {
-        const normalized = normalizeBaseUrl(prev);
-        if (normalized && finalList.includes(normalized)) return normalized;
-        return finalList[0] || normalizedBaseUrl;
-      });
       setSelectedAddBaseUrl((prev) => {
         const normalized = normalizeBaseUrl(prev);
         if (normalized && finalList.includes(normalized)) return normalized;
@@ -655,41 +664,6 @@ export default function ApiKeysPanel({
       apiKey: String(data.api_key || data.apiKey || key),
       balance: Number(data.balance ?? 0),
     };
-  };
-
-  const createFromCashuToken = async () => {
-    if (!newCashuToken.trim()) {
-      toast.error("Cashu token is required");
-      return;
-    }
-
-    setIsCreating(true);
-    try {
-      const createBase = normalizeBaseUrl(selectedCreateBaseUrl) || normalizedBaseUrl;
-      const info = await fetchKeyInfo(createBase, newCashuToken.trim());
-      const next: StoredApiKey = {
-        key: info.apiKey,
-        balance: info.balance,
-        label: newApiLabel.trim() || "Unnamed",
-        baseUrl: createBase,
-        isInvalid: false,
-      };
-      const already = storedApiKeys.some((item) => getKeyId(item) === getKeyId(next));
-      if (already) {
-        toast.error("This API key is already added for the selected node");
-        return;
-      }
-      const updated = [next, ...storedApiKeys];
-      await persistKeys(updated);
-      setShowCreateDialog(false);
-      setNewApiLabel("");
-      setNewCashuToken("");
-      toast.success("API key created");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to create API key");
-    } finally {
-      setIsCreating(false);
-    }
   };
 
   const addExistingApiKey = async () => {
@@ -935,7 +909,7 @@ export default function ApiKeysPanel({
         </p>
       </div>
 
-      <div className="platform-card space-y-4 p-4">
+      <Card className="gap-0 space-y-4 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="text-sm text-muted-foreground">Total key balance</div>
@@ -943,46 +917,49 @@ export default function ApiKeysPanel({
               {totalBalanceSats.toFixed(2)} sats
             </div>
           </div>
-          <button
+          <Button
             onClick={refreshAllKeys}
             disabled={isRefreshingAll || isSyncBootstrapping || storedApiKeys.length === 0}
-            className="platform-btn-muted"
+            variant="secondary"
             type="button"
           >
             <RefreshCw
               className={`h-4 w-4 ${isRefreshingAll ? "animate-spin" : ""}`}
             />
             Refresh
-          </button>
+          </Button>
         </div>
 
-      </div>
+      </Card>
 
       <div className="flex flex-wrap gap-2">
-        <button
-          onClick={() => setShowCreateDialog(true)}
-          className="platform-btn-secondary"
+        <Button
+          onClick={() => {
+            setShowLightningWorkflowDialog(true);
+            setActivateCreateWorkflowSignal((current) => current + 1);
+          }}
+          variant="secondary"
           type="button"
         >
           <Plus className="h-4 w-4" />
           Create Key
-        </button>
-        <button
+        </Button>
+        <Button
           onClick={() => setShowAddDialog(true)}
-          className="platform-btn-secondary"
+          variant="secondary"
           type="button"
         >
           <Key className="h-4 w-4" />
           Add Existing Key
-        </button>
+        </Button>
+        <Button
+          onClick={() => setShowChildWorkflowDialog(true)}
+          variant="secondary"
+          type="button"
+        >
+          Child Keys
+        </Button>
       </div>
-
-      <NodeKeyWorkflows
-        defaultBaseUrl={normalizedBaseUrl}
-        availableBaseUrls={availableBaseUrls}
-        storedApiKeys={storedApiKeys}
-        onUpsertKey={upsertKeyFromWorkflow}
-      />
 
       {storedApiKeys.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">
@@ -1008,53 +985,55 @@ export default function ApiKeysPanel({
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     {editingLabelKey === keyId ? (
                       <div className="flex items-center gap-1 min-w-0 flex-1">
-                        <input
+                        <Input
                           value={editingLabelValue}
                           onChange={(event) => setEditingLabelValue(event.target.value)}
                           onClick={(event) => event.stopPropagation()}
-                          className="bg-background border border-border rounded-full px-3 py-1 text-sm text-foreground w-full"
                           autoFocus
                         />
-                        <button
+                        <Button
                           onClick={(event) => {
                             event.stopPropagation();
                             void saveRename(keyData);
                           }}
-                          className="p-1 rounded-full hover:bg-muted"
+                          variant="ghost"
+                          size="icon-xs"
                           type="button"
                           title="Save"
                         >
                           <Check className="h-4 w-4 text-muted-foreground" />
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           onClick={(event) => {
                             event.stopPropagation();
                             setEditingLabelKey(null);
                             setEditingLabelValue("");
                           }}
-                          className="p-1 rounded-full hover:bg-muted"
+                          variant="ghost"
+                          size="icon-xs"
                           type="button"
                           title="Cancel"
                         >
                           <X className="h-4 w-4 text-muted-foreground" />
-                        </button>
+                        </Button>
                       </div>
                     ) : (
                       <>
                         <span className="text-sm font-medium text-foreground truncate">
                           {keyData.label || "Unnamed API Key"}
                         </span>
-                        <button
+                        <Button
                           onClick={(event) => {
                             event.stopPropagation();
                             startRename(keyData);
                           }}
-                          className="p-1 rounded-full hover:bg-muted"
+                          variant="ghost"
+                          size="icon-xs"
                           type="button"
                           title="Rename"
                         >
                           <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
-                        </button>
+                        </Button>
                       </>
                     )}
                     <span className="text-xs text-muted-foreground truncate">
@@ -1070,12 +1049,13 @@ export default function ApiKeysPanel({
                     <span className="text-sm font-medium text-foreground">
                       {formatSats(keyData.balance)}
                     </span>
-                    <button
+                    <Button
                       onClick={(event) => {
                         event.stopPropagation();
                         toggleExpanded(keyId);
                       }}
-                      className="p-1 rounded hover:bg-muted"
+                      variant="ghost"
+                      size="icon-xs"
                       type="button"
                     >
                       {expanded ? (
@@ -1083,22 +1063,23 @@ export default function ApiKeysPanel({
                       ) : (
                         <ChevronDown className="h-4 w-4 text-muted-foreground" />
                       )}
-                    </button>
+                    </Button>
                   </div>
                 </div>
 
                 {expanded && (
                   <div className="px-4 pb-4 pt-2 space-y-3 border-t border-border">
                     <div className="flex items-center gap-2">
-                      <input
+                      <Input
                         type="password"
                         readOnly
                         value={keyData.key}
-                        className="grow bg-background border border-border rounded-full px-3 py-1 text-[11px] text-foreground/80 font-mono"
+                        className="grow font-mono text-xs"
                       />
-                      <button
+                      <Button
                         onClick={() => void handleCopy(keyData.key, keyId)}
-                        className="platform-btn-secondary h-8 w-8 p-0"
+                        variant="secondary"
+                        size="icon-sm"
                         type="button"
                         title="Copy API key"
                       >
@@ -1107,10 +1088,11 @@ export default function ApiKeysPanel({
                         ) : (
                           <Copy className="h-4 w-4 text-muted-foreground" />
                         )}
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         onClick={() => void refreshSingleKey(keyData)}
-                        className="platform-btn-secondary gap-1 px-2 py-1 text-[11px]"
+                        variant="secondary"
+                        size="sm"
                         type="button"
                         disabled={isRefreshingKey === keyId}
                       >
@@ -1120,23 +1102,24 @@ export default function ApiKeysPanel({
                           }`}
                         />
                         Refresh
-                      </button>
+                      </Button>
                     </div>
 
                     <div className="flex flex-wrap justify-end gap-2">
-                      <button
+                      <Button
                         onClick={() => {
                           setKeyToTopup(keyData);
                           setShowTopupDialog(true);
                         }}
-                        className="platform-btn-secondary gap-1 px-3 py-1.5 text-xs"
+                        variant="secondary"
+                        size="sm"
                         type="button"
                         disabled={keyData.isInvalid || isTopupKey === keyId}
                       >
                         <Wallet className="h-3.5 w-3.5" />
                         {isTopupKey === keyId ? "Topping up..." : "Top Up"}
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         onClick={async () => {
                           setIsRefundingKey(keyId);
                           try {
@@ -1156,24 +1139,26 @@ export default function ApiKeysPanel({
                             setIsRefundingKey(null);
                           }
                         }}
-                        className="platform-btn-ghost px-3 py-1.5 text-xs"
+                        variant="ghost"
+                        size="sm"
                         type="button"
                         disabled={isRefundingKey === keyId}
                       >
                         {isRefundingKey === keyId ? "Refunding..." : "Refund"}
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         onClick={() => {
                           setKeyToDelete(keyData);
                           setShowDeleteDialog(true);
                         }}
-                        className="platform-btn-muted gap-1 px-3 py-1.5 text-xs"
+                        variant="secondary"
+                        size="sm"
                         type="button"
                         disabled={isDeletingKey === keyId}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                         Delete
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -1184,107 +1169,93 @@ export default function ApiKeysPanel({
       )}
 
       <SettingsDialog
-        open={showCreateDialog}
-        onOpenChange={setShowCreateDialog}
-        title="Create API Key"
-      >
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-foreground">Create API Key</h3>
-          <p className="text-sm text-muted-foreground">
-            Create a new API key from a Cashu token.
-          </p>
-          <input
-            placeholder="Label (optional)"
-            value={newApiLabel}
-            onChange={(event) => setNewApiLabel(event.target.value)}
-            className="platform-input"
-          />
-          <textarea
-            placeholder="Cashu token"
-            value={newCashuToken}
-            onChange={(event) => setNewCashuToken(event.target.value)}
-            className="platform-input h-24 font-mono"
-          />
-          <select
-            value={selectedCreateBaseUrl}
-            onChange={(event) => setSelectedCreateBaseUrl(event.target.value)}
-            className="platform-input"
-          >
-            {availableBaseUrls.map((url) => (
-              <option key={url} value={url}>
-                {url}
-              </option>
-            ))}
-          </select>
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={() => setShowCreateDialog(false)}
-              className="platform-btn-ghost px-4"
-              type="button"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => void createFromCashuToken()}
-              className="platform-btn-secondary px-4"
-              disabled={isCreating}
-              type="button"
-            >
-              {isCreating ? "Creating..." : "Create"}
-            </button>
-          </div>
-        </div>
-      </SettingsDialog>
-
-      <SettingsDialog
         open={showAddDialog}
         onOpenChange={setShowAddDialog}
         title="Add Existing API Key"
       >
         <div className="space-y-4">
           <h3 className="text-lg font-semibold text-foreground">Add Existing API Key</h3>
-          <input
+          <Input
             placeholder="Label (optional)"
             value={manualApiLabel}
             onChange={(event) => setManualApiLabel(event.target.value)}
-            className="platform-input"
           />
-          <input
+          <Input
             placeholder="API key"
             value={manualApiKey}
             onChange={(event) => setManualApiKey(event.target.value)}
-            className="platform-input font-mono"
+            className="font-mono"
           />
-          <select
-            value={selectedAddBaseUrl}
-            onChange={(event) => setSelectedAddBaseUrl(event.target.value)}
-            className="platform-input"
-          >
-            {availableBaseUrls.map((url) => (
-              <option key={url} value={url}>
-                {url}
-              </option>
-            ))}
-          </select>
+          <Select value={selectedAddBaseUrl} onValueChange={setSelectedAddBaseUrl}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {availableBaseUrls.map((url) => (
+                <SelectItem key={url} value={url}>
+                  {url}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <div className="flex justify-end gap-2">
-            <button
+            <Button
               onClick={() => setShowAddDialog(false)}
-              className="platform-btn-ghost px-4"
+              variant="ghost"
               type="button"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={() => void addExistingApiKey()}
-              className="platform-btn-secondary px-4"
+              variant="secondary"
               disabled={isAdding || !manualApiKey.trim()}
               type="button"
             >
               {isAdding ? "Adding..." : "Add"}
-            </button>
+            </Button>
           </div>
         </div>
       </SettingsDialog>
+
+      <Dialog open={showLightningWorkflowDialog} onOpenChange={setShowLightningWorkflowDialog}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Lightning Key Workflow</DialogTitle>
+            <DialogDescription>
+              Create, top up, and recover API keys.
+            </DialogDescription>
+          </DialogHeader>
+          <NodeKeyWorkflows
+            defaultBaseUrl={normalizedBaseUrl}
+            availableBaseUrls={availableBaseUrls}
+            storedApiKeys={storedApiKeys}
+            onUpsertKey={upsertKeyFromWorkflow}
+            activateCreateSignal={activateCreateWorkflowSignal}
+            showChildSection={false}
+            minimalLayout
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showChildWorkflowDialog} onOpenChange={setShowChildWorkflowDialog}>
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Child Key Tools</DialogTitle>
+            <DialogDescription>
+              Generate child keys and check their status.
+            </DialogDescription>
+          </DialogHeader>
+          <NodeKeyWorkflows
+            defaultBaseUrl={normalizedBaseUrl}
+            availableBaseUrls={availableBaseUrls}
+            storedApiKeys={storedApiKeys}
+            onUpsertKey={upsertKeyFromWorkflow}
+            showLightningSection={false}
+            minimalLayout
+          />
+        </DialogContent>
+      </Dialog>
 
       <ModalShell
         open={showDeleteDialog && !!keyToDelete}
@@ -1304,36 +1275,36 @@ export default function ApiKeysPanel({
               You can refund first or delete immediately.
             </p>
             <div className="flex justify-end gap-2">
-              <button
+              <Button
                 onClick={() => {
                   setShowDeleteDialog(false);
                   setKeyToDelete(null);
                 }}
-                className="platform-btn-ghost px-4"
+                variant="ghost"
                 type="button"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={() => void refundAndDeleteKey()}
-                className="platform-btn-secondary px-4"
+                variant="secondary"
                 type="button"
                 disabled={isRefundingKey === getKeyId(keyToDelete)}
               >
                 {isRefundingKey === getKeyId(keyToDelete)
                   ? "Refunding..."
                   : "Refund & Delete"}
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={() => void deleteKey()}
-                className="platform-btn-muted px-4"
+                variant="secondary"
                 type="button"
                 disabled={isDeletingKey === getKeyId(keyToDelete)}
               >
                 {isDeletingKey === getKeyId(keyToDelete)
                   ? "Deleting..."
                   : "Delete Only"}
-              </button>
+              </Button>
             </div>
           </>
         )}
@@ -1357,34 +1328,34 @@ export default function ApiKeysPanel({
               Add balance to <span className="font-medium">{keyToTopup.label || "Unnamed"}</span>{" "}
               using a Cashu token.
             </p>
-            <textarea
+            <Textarea
               placeholder="Cashu token"
               value={topupToken}
               onChange={(event) => setTopupToken(event.target.value)}
-              className="platform-input h-24 font-mono"
+              className="h-24 font-mono"
             />
             <div className="flex justify-end gap-2">
-              <button
+              <Button
                 onClick={() => {
                   setShowTopupDialog(false);
                   setTopupToken("");
                   setKeyToTopup(null);
                 }}
-                className="platform-btn-ghost px-4"
+                variant="ghost"
                 type="button"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={() => void topupKey()}
-                className="platform-btn-secondary px-4"
+                variant="secondary"
                 type="button"
                 disabled={!topupToken.trim() || isTopupKey === getKeyId(keyToTopup)}
               >
                 {isTopupKey === getKeyId(keyToTopup)
                   ? "Topping up..."
                   : "Confirm Top Up"}
-              </button>
+              </Button>
             </div>
           </>
         )}

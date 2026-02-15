@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import type { BitcoinConnectStatus } from "@/hooks/useBitcoinConnect";
+import { Button } from "@/components/ui/button";
 
 interface BitcoinConnectStatusRowProps {
   status: BitcoinConnectStatus;
@@ -40,13 +41,14 @@ export default function BitcoinConnectStatusRow({
           )}
         </div>
       ) : (
-        <button
+        <Button
           onClick={onConnect}
-          className="platform-btn-secondary px-3 py-1.5 text-xs"
+          variant="secondary"
+          size="sm"
           type="button"
         >
           {status === "connecting" ? "Connecting..." : "Connect wallet"}
-        </button>
+        </Button>
       )}
     </div>
   );

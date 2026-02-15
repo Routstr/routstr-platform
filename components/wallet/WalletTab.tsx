@@ -21,6 +21,9 @@ import {
   requestBitcoinConnectProvider,
   useBitcoinConnectStatus,
 } from "@/hooks/useBitcoinConnect";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 interface MintQuoteResponse {
   quote: string;
@@ -459,21 +462,19 @@ const WalletTab: React.FC<WalletTabProps> = ({
               const isActive = activeTab === tab.id;
               const TabIcon = tab.icon;
               return (
-                <button
+                <Button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`w-full rounded-lg border px-3 py-2.5 text-left transition-colors ${
-                    isActive
-                      ? "border-border/80 bg-muted/45 text-foreground"
-                      : "border-transparent text-muted-foreground hover:border-border/40 hover:bg-muted/20 hover:text-foreground"
-                  }`}
+                  variant={isActive ? "secondary" : "ghost"}
+                  size="lg"
+                  className="w-full justify-start"
                   type="button"
                 >
                   <div className="flex items-center gap-2.5">
                     <TabIcon className="h-4 w-4" />
                     <span className="text-sm font-medium">{tab.label}</span>
                   </div>
-                </button>
+                </Button>
               );
             })}
           </nav>
@@ -506,20 +507,20 @@ const WalletTab: React.FC<WalletTabProps> = ({
 
                 <div className="grid gap-2 sm:grid-cols-3">
                   {popularAmounts.map((amount) => (
-                    <button
+                    <Button
                       key={`mint-quick-${amount}`}
                       onClick={() => void handleQuickMint(amount)}
                       disabled={isMinting}
-                      className="platform-btn-secondary px-3"
+                      variant="secondary"
                       type="button"
                     >
                       {amount} sats
-                    </button>
+                    </Button>
                   ))}
                 </div>
 
                 <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_13rem]">
-                  <input
+                  <Input
                     type="number"
                     value={mintAmount}
                     onChange={(event) => setMintAmount(event.target.value)}
@@ -529,17 +530,16 @@ const WalletTab: React.FC<WalletTabProps> = ({
                         void createMintQuote();
                       }
                     }}
-                    className="platform-input"
                     placeholder="Amount in sats"
                   />
-                  <button
+                  <Button
                     onClick={() => void createMintQuote()}
                     disabled={isMinting || !mintAmount}
-                    className="platform-btn-primary w-full gap-1 px-4"
+                    className="w-full"
                     type="button"
                   >
                     {isMinting ? "Creating..." : "Create invoice"}
-                  </button>
+                  </Button>
                 </div>
 
                 <div className="rounded-md border border-border/60 bg-background/30 p-3 space-y-3">
@@ -564,39 +564,39 @@ const WalletTab: React.FC<WalletTabProps> = ({
                         </span>
                       </p>
                       <div className="flex flex-wrap gap-2">
-                        <button
+                        <Button
                           onClick={() => setShowInvoiceModal(true)}
-                          className="platform-btn-secondary px-3"
+                          variant="secondary"
                           type="button"
                         >
                           Open QR modal
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           onClick={() => {
                             void payMintInvoiceWithConnectedWallet();
                           }}
                           disabled={isPayingWithWallet}
-                          className="platform-btn-secondary px-3"
+                          variant="secondary"
                           type="button"
                         >
                           {isPayingWithWallet ? "Paying..." : "Pay with connected wallet"}
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           onClick={() => {
                             void checkMintQuote();
                           }}
-                          className="platform-btn-secondary px-3"
+                          variant="secondary"
                           type="button"
                         >
                           Check status now
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           onClick={handleCancel}
-                          className="platform-btn-ghost px-3"
+                          variant="ghost"
                           type="button"
                         >
                           Clear invoice
-                        </button>
+                        </Button>
                       </div>
                     </>
                   ) : (
@@ -630,10 +630,10 @@ const WalletTab: React.FC<WalletTabProps> = ({
                 </p>
               </div>
 
-              <div className="rounded-xl border border-border/60 bg-muted/15 p-3 sm:p-4 space-y-4">
-                <label className="space-y-1.5">
+              <div className="rounded-xl border border-border/60 bg-muted/15 p-4 space-y-5">
+                <label className="flex flex-col gap-1.5">
                   <span className="text-xs text-muted-foreground">Invoice</span>
-                  <input
+                  <Input
                     placeholder="lnbc..."
                     value={sendInvoice}
                     onChange={(event) => {
@@ -645,12 +645,11 @@ const WalletTab: React.FC<WalletTabProps> = ({
                         void handlePayInvoice();
                       }
                     }}
-                    className="platform-input"
                   />
                 </label>
 
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-md bg-background/30 p-2.5">
+                  <div className="rounded-md bg-background/30 p-3">
                     <p className="text-xs text-muted-foreground">Amount</p>
                     <p className="mt-1 text-base font-semibold text-foreground">
                       {invoiceAmount !== null
@@ -658,7 +657,7 @@ const WalletTab: React.FC<WalletTabProps> = ({
                         : "Awaiting quote"}
                     </p>
                   </div>
-                  <div className="rounded-md bg-background/30 p-2.5">
+                  <div className="rounded-md bg-background/30 p-3">
                     <p className="text-xs text-muted-foreground">Max fee reserve</p>
                     <p className="mt-1 text-base font-semibold text-foreground">
                       {invoiceFeeReserve !== null
@@ -668,15 +667,15 @@ const WalletTab: React.FC<WalletTabProps> = ({
                   </div>
                 </div>
 
-                <div className="bg-background/20 p-1 space-y-3">
+                <div className="rounded-md bg-background/20 p-3 space-y-4">
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-md bg-background/25 p-2.5">
+                    <div className="rounded-md bg-background/25 p-3">
                       <p className="text-[11px] text-muted-foreground">Available balance</p>
                       <p className="mt-1 text-sm font-semibold text-foreground">
                         {balance.toLocaleString()} sats
                       </p>
                     </div>
-                    <div className="rounded-md bg-background/25 p-2.5">
+                    <div className="rounded-md bg-background/25 p-3">
                       <p className="text-[11px] text-muted-foreground">Total spend budget</p>
                       <p className="mt-1 text-sm font-semibold text-foreground">
                         {payTotalBudget !== null
@@ -715,19 +714,18 @@ const WalletTab: React.FC<WalletTabProps> = ({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 pt-2">
-                  <button
+                  <Button
                     onClick={resetSendInvoiceState}
-                    className="platform-btn-ghost px-3"
+                    variant="ghost"
                     type="button"
                   >
                     Clear
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     onClick={() => void handlePayInvoice()}
                     disabled={
                       isProcessing || isLoadingInvoice || !sendInvoice || invoiceAmount === null
                     }
-                    className="platform-btn-primary gap-1 px-3"
                     type="button"
                   >
                     {isProcessing || isLoadingInvoice ? (
@@ -738,7 +736,7 @@ const WalletTab: React.FC<WalletTabProps> = ({
                       : isLoadingInvoice
                         ? "Loading quote..."
                         : "Pay invoice"}
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -758,18 +756,18 @@ const WalletTab: React.FC<WalletTabProps> = ({
                   <h4 className="text-sm font-medium">Generate token</h4>
                   <div className="grid gap-2 grid-cols-3">
                     {popularAmounts.map((amount) => (
-                      <button
+                      <Button
                         key={`send-quick-${amount}`}
                         onClick={() => setSendAmount(amount.toString())}
-                        className="platform-btn-secondary px-3"
+                        variant="secondary"
                         type="button"
                       >
                         {amount} sats
-                      </button>
+                      </Button>
                     ))}
                   </div>
                   <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_13rem]">
-                    <input
+                    <Input
                       type="number"
                       value={sendAmount}
                       onChange={(event) => setSendAmount(event.target.value)}
@@ -779,29 +777,29 @@ const WalletTab: React.FC<WalletTabProps> = ({
                           void generateSendToken();
                         }
                       }}
-                      className="platform-input"
                       placeholder="Amount in sats"
                     />
-                    <button
+                    <Button
                       onClick={() => void generateSendToken()}
                       disabled={isGeneratingSendToken || !sendAmount}
-                      className="platform-btn-primary w-full gap-1 px-4"
+                      className="w-full"
                       type="button"
                     >
                       {isGeneratingSendToken ? "Generating..." : "Generate"}
-                    </button>
+                    </Button>
                   </div>
                   {generatedToken ? (
                     <div className="rounded-md border border-border/60 bg-background/35 p-3">
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-xs text-muted-foreground">Generated token</span>
-                        <button
+                        <Button
                           onClick={copyTokenToClipboard}
-                          className="text-xs text-muted-foreground hover:text-foreground"
+                          variant="ghost"
+                          size="xs"
                           type="button"
                         >
                           Copy
-                        </button>
+                        </Button>
                       </div>
                       <p className="max-h-36 overflow-auto break-all font-mono text-xs text-foreground/85">
                         {generatedToken}
@@ -819,29 +817,30 @@ const WalletTab: React.FC<WalletTabProps> = ({
                 <div className="space-y-3">
                   <h4 className="text-sm font-medium">Import token</h4>
                   <div className="relative">
-                    <textarea
+                    <Textarea
                       value={tokenToImport}
                       onChange={(event) => setTokenToImport(event.target.value)}
-                      className="platform-input h-28 resize-none pr-10"
+                      className="h-28 resize-none pr-10"
                       placeholder="Paste Cashu token"
                     />
-                    <button
+                    <Button
                       onClick={handlePasteTokenToImport}
-                      className="platform-btn-icon absolute right-2 top-2 h-7 w-7 p-0"
+                      variant="outline"
+                      size="icon-sm"
+                      className="absolute right-2 top-2"
                       type="button"
                       title="Paste"
                     >
                       <ClipboardPaste className="h-3.5 w-3.5" />
-                    </button>
+                    </Button>
                   </div>
-                  <button
+                  <Button
                     onClick={() => void importToken()}
                     disabled={isImporting || !tokenToImport.trim()}
-                    className="platform-btn-primary gap-1 px-3"
                     type="button"
                   >
                     {isImporting ? "Importing..." : "Import token"}
-                  </button>
+                  </Button>
                   <div className="rounded-md bg-background/25 p-2.5">
                     <p className="text-xs text-muted-foreground">
                       Refunds return a Cashu token. Import it here to restore balance.

@@ -22,6 +22,9 @@ import { NostrConnectSigner } from "applesauce-signers";
 import { RelayPool } from "applesauce-relay";
 import { toast } from "sonner";
 import { useAccountManager, AccountMetadata } from "@/components/providers/ClientProviders";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
 
 type LoginMethod = "nsec" | "bunker" | "qr";
 type SignupStep = "initial" | "save-keys";
@@ -200,9 +203,6 @@ export default function LoginMethodsCard({
     }
   }, [manager, manualSave, completeLogin]);
 
-  const methodButtonBase =
-    "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors whitespace-nowrap";
-
   return (
     <div className="space-y-4 rounded-xl border border-border/80 bg-background/70 p-5">
       <div className="space-y-1">
@@ -216,9 +216,10 @@ export default function LoginMethodsCard({
         <div className="rounded-lg border border-border bg-muted/40 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-foreground">New identity</p>
-            <button
+            <Button
               onClick={() => setShowNsec((prev) => !prev)}
-              className="platform-btn-ghost px-2 py-1 text-xs font-normal"
+              variant="ghost"
+              size="sm"
               type="button"
             >
               {showNsec ? (
@@ -232,7 +233,7 @@ export default function LoginMethodsCard({
                   Show
                 </span>
               )}
-            </button>
+            </Button>
           </div>
 
           <div className="px-2 py-2 bg-muted/60 border border-border rounded-lg text-xs text-foreground/80 break-all font-mono flex items-center gap-2">
@@ -243,17 +244,19 @@ export default function LoginMethodsCard({
                     -8
                   )}`}
             </span>
-            <button
+            <Button
               onClick={async () => {
                 await copy(generatedNsec);
                 setNsecCopied(true);
                 setTimeout(() => setNsecCopied(false), 2000);
               }}
-              className="platform-btn-secondary shrink-0 px-2 py-1 text-[10px]"
+              variant="secondary"
+              size="sm"
+              className="shrink-0"
               type="button"
             >
               {nsecCopied ? "Copied" : "Copy"}
-            </button>
+            </Button>
           </div>
 
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -266,61 +269,63 @@ export default function LoginMethodsCard({
           </label>
 
           <div className="flex gap-2">
-            <button
+            <Button
               onClick={() => {
                 setSignupStep("initial");
                 setGeneratedAccount(null);
               }}
-              className="platform-btn-secondary flex-1 py-2 text-xs"
+              variant="secondary"
+              size="sm"
+              className="flex-1"
               type="button"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={finalizeNewIdentity}
               disabled={!savedConfirmation}
-              className="platform-btn-primary flex-1 py-2 text-xs"
+              size="sm"
+              className="flex-1"
               type="button"
             >
               Continue
-            </button>
+            </Button>
           </div>
         </div>
       ) : (
         <div className="rounded-lg border border-border bg-muted/40 p-4 flex items-center justify-between gap-3">
           <p className="text-sm font-medium text-foreground">Create new identity</p>
-          <button
+          <Button
             onClick={createNewIdentity}
-            className="platform-btn-muted px-3 py-2 text-xs font-semibold"
+            variant="secondary"
+            size="sm"
             type="button"
           >
             <UserPlus className="h-4 w-4" />
             Create
-          </button>
+          </Button>
         </div>
       )}
 
       {signupStep === "initial" && (
         <>
           <div className="flex flex-nowrap gap-1.5 overflow-x-auto pb-1">
-            <button
+            <Button
               onClick={() => setActiveMethod("nsec")}
-              className={`${methodButtonBase} ${
-                activeMethod === "nsec"
-                  ? "bg-background/45 text-foreground border-border/80"
-                  : "bg-muted/35 border-border/60 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-              }`}
+              variant={activeMethod === "nsec" ? "secondary" : "ghost"}
+              size="sm"
               type="button"
             >
               <KeyRound className="h-3 w-3" />
               Private key
-            </button>
+            </Button>
 
             {hasExtension && (
-              <button
+              <Button
                 onClick={handleExtensionLogin}
                 disabled={isConnectingExtension}
-                className={`${methodButtonBase} bg-muted/60 border-border text-foreground hover:bg-muted/80 disabled:opacity-60`}
+                variant="secondary"
+                size="sm"
                 type="button"
               >
                 {isConnectingExtension ? (
@@ -334,10 +339,10 @@ export default function LoginMethodsCard({
                     Extension
                   </>
                 )}
-              </button>
+              </Button>
             )}
 
-            <button
+            <Button
               onClick={() => {
                 const nextMethod = activeMethod === "qr" ? "nsec" : "qr";
                 setActiveMethod(nextMethod);
@@ -345,31 +350,25 @@ export default function LoginMethodsCard({
                   void handleQrConnect();
                 }
               }}
-              className={`${methodButtonBase} ${
-                activeMethod === "qr"
-                  ? "bg-background/45 text-foreground border-border/80"
-                  : "bg-muted/35 border-border/60 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-              }`}
+              variant={activeMethod === "qr" ? "secondary" : "ghost"}
+              size="sm"
               type="button"
             >
               <QrCode className="h-3 w-3" />
               QR signer
-            </button>
+            </Button>
 
-            <button
+            <Button
               onClick={() =>
                 setActiveMethod((prev) => (prev === "bunker" ? "nsec" : "bunker"))
               }
-              className={`${methodButtonBase} ${
-                activeMethod === "bunker"
-                  ? "bg-background/45 text-foreground border-border/80"
-                  : "bg-muted/35 border-border/60 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-              }`}
+              variant={activeMethod === "bunker" ? "secondary" : "ghost"}
+              size="sm"
               type="button"
             >
               <Link2 className="h-3 w-3" />
               Bunker
-            </button>
+            </Button>
           </div>
 
           {activeMethod === "nsec" && (
@@ -380,7 +379,7 @@ export default function LoginMethodsCard({
               </div>
               <div className="flex flex-col sm:flex-row gap-2">
                 <div className="relative flex-1">
-                  <input
+                  <Input
                     type="password"
                     value={loginNsec}
                     onChange={(event) => setLoginNsec(event.target.value)}
@@ -391,9 +390,9 @@ export default function LoginMethodsCard({
                       }
                     }}
                     placeholder="nsec1..."
-                    className="platform-input pr-10"
+                    className="pr-10"
                   />
-                  <button
+                  <Button
                     onClick={async () => {
                       try {
                         const text = await navigator.clipboard.readText();
@@ -402,22 +401,26 @@ export default function LoginMethodsCard({
                         toast.error("Clipboard not available");
                       }
                     }}
-                    className="platform-btn-icon absolute right-2 top-1/2 h-7 w-7 -translate-y-1/2 p-0"
+                    variant="outline"
+                    size="icon-sm"
+                    className="absolute right-2 top-1/2 -translate-y-1/2"
                     type="button"
                     title="Paste"
                   >
                     <ClipboardPaste className="h-3.5 w-3.5" />
-                  </button>
+                  </Button>
                 </div>
-                <button
+                <Button
                   onClick={handleKeyLogin}
                   disabled={isLoggingIn || !loginNsec.trim()}
-                  className="platform-btn-secondary shrink-0 px-3 py-1.5 text-xs"
+                  variant="secondary"
+                  size="sm"
+                  className="shrink-0"
                   type="button"
                 >
                   <KeyRound className="h-4 w-4" />
                   {isLoggingIn ? "Signing in..." : "Sign in"}
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -430,14 +433,14 @@ export default function LoginMethodsCard({
               </div>
               <div className="flex flex-col sm:flex-row gap-2">
                 <div className="relative flex-1">
-                  <input
+                  <Input
                     type="text"
                     placeholder="bunker://..."
                     value={bunkerUrl}
                     onChange={(event) => setBunkerUrl(event.target.value)}
-                    className="platform-input pr-10"
+                    className="pr-10"
                   />
-                  <button
+                  <Button
                     onClick={async () => {
                       try {
                         const text = await navigator.clipboard.readText();
@@ -446,21 +449,25 @@ export default function LoginMethodsCard({
                         toast.error("Clipboard not available");
                       }
                     }}
-                    className="platform-btn-icon absolute right-2 top-1/2 h-7 w-7 -translate-y-1/2 p-0"
+                    variant="outline"
+                    size="icon-sm"
+                    className="absolute right-2 top-1/2 -translate-y-1/2"
                     type="button"
                     title="Paste"
                   >
                     <ClipboardPaste className="h-3.5 w-3.5" />
-                  </button>
+                  </Button>
                 </div>
-                <button
+                <Button
                   onClick={() => void handleBunkerConnect()}
                   disabled={!bunkerUrl.trim() || isConnectingBunker}
-                  className="platform-btn-secondary shrink-0 px-3 py-1.5 text-xs"
+                  variant="secondary"
+                  size="sm"
+                  className="shrink-0"
                   type="button"
                 >
                   {isConnectingBunker ? "Connecting..." : "Connect"}
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -476,28 +483,30 @@ export default function LoginMethodsCard({
                   <p className="text-xs text-muted-foreground text-center">
                     Scan with your Nostr mobile signer.
                   </p>
-                  <div className="platform-card-soft p-3">
+                  <Card className="gap-0 bg-muted/20 p-3 py-3 shadow-none">
                     <QRCodeSVG value={nostrConnectUri} size={150} />
-                  </div>
-                  <button
+                  </Card>
+                  <Button
                     onClick={cancelQrFlow}
-                    className="platform-btn-ghost px-3 py-1.5 text-xs"
+                    variant="ghost"
+                    size="sm"
                     type="button"
                   >
                     Cancel
-                  </button>
+                  </Button>
                 </div>
               ) : (
                 <div className="flex items-center justify-center py-2">
-                  <button
+                  <Button
                     onClick={() => void handleQrConnect()}
-                    className="platform-btn-secondary px-3 py-2 text-xs"
+                    variant="secondary"
+                    size="sm"
                     type="button"
                     disabled={isConnectingQR}
                   >
                     <QrCode className="h-4 w-4" />
                     {isConnectingQR ? "Generating..." : "Generate QR"}
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>

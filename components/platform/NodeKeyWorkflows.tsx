@@ -1,9 +1,38 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  CashuMint,
+  CashuWallet,
+  getEncodedTokenV4,
+  type Proof as CashuProof,
+} from "@cashu/cashu-ts";
 import { Check, Copy, Loader2, QrCode, RefreshCw, Zap } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
+import {
+  appendTransaction,
+  getProofsBalanceSats,
+  readCashuProofs,
+  writeCashuProofs,
+} from "@/lib/platformWallet";
+import {
+  annotateProofsWithMint,
+  getProofsForMint,
+  type WalletProof,
+} from "@/lib/nip60WalletSync";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 
 type StoredApiKeyLike = {
   key: string;
@@ -45,11 +74,19 @@ type ChildKeyStatus = {
   isDrained: boolean;
 };
 
+const FALLBACK_MINT_URL = "https://mint.minibits.cash/Bitcoin";
+const ACTIVE_MINT_STORAGE_KEY = "platform_active_mint_url";
+type MintUnit = "sat" | "msat";
+
 type NodeKeyWorkflowsProps = {
   defaultBaseUrl: string;
   availableBaseUrls: string[];
   storedApiKeys: StoredApiKeyLike[];
   onUpsertKey: (baseUrl: string, apiKey: string, label: string) => Promise<void>;
+  activateCreateSignal?: number;
+  showLightningSection?: boolean;
+  showChildSection?: boolean;
+  minimalLayout?: boolean;
 };
 
 type TabOption<T extends string> = {
@@ -58,13 +95,19 @@ type TabOption<T extends string> = {
   description?: string;
 };
 
-type SegmentedTabsProps<T extends string> = {
-  idPrefix: string;
-  label: string;
-  options: readonly TabOption<T>[];
-  value: T;
-  onChange: (next: T) => void;
-};
+function SectionShell({
+  children,
+  isMinimalLayout,
+}: {
+  children: ReactNode;
+  isMinimalLayout: boolean;
+}) {
+  return isMinimalLayout ? (
+    <div className="space-y-3">{children}</div>
+  ) : (
+    <Card className="gap-0 p-5">{children}</Card>
+  );
+}
 
 function getStoredTabValue<T extends string>(
   storageKey: string,
@@ -78,86 +121,93 @@ function getStoredTabValue<T extends string>(
   return matched ? matched.id : fallback;
 }
 
-function SegmentedTabs<T extends string>({
-  idPrefix,
-  label,
-  options,
-  value,
-  onChange,
-}: SegmentedTabsProps<T>) {
-  const tabClass = (isActive: boolean): string =>
-    `rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-      isActive
-        ? "border border-border/70 bg-muted/55 text-foreground"
-        : "border border-transparent text-muted-foreground hover:bg-muted/35 hover:text-foreground"
-    }`;
-
-  const selectedOption = options.find((option) => option.id === value) ?? options[0];
-
-  return (
-    <div className="w-full max-w-[24rem] space-y-2">
-      <div
-        role="tablist"
-        aria-label={label}
-        className="inline-flex w-full rounded-lg border border-border/70 bg-muted/15 p-1"
-      >
-        {options.map((option, index) => {
-          const isActive = option.id === value;
-          return (
-            <button
-              key={option.id}
-              id={`${idPrefix}-tab-${option.id}`}
-              role="tab"
-              aria-selected={isActive}
-              aria-controls={`${idPrefix}-panel-${option.id}`}
-              tabIndex={isActive ? 0 : -1}
-              type="button"
-              className={`${tabClass(isActive)} flex-1 text-center`}
-              onClick={() => onChange(option.id)}
-              onKeyDown={(event) => {
-                if (
-                  event.key !== "ArrowRight" &&
-                  event.key !== "ArrowLeft" &&
-                  event.key !== "Home" &&
-                  event.key !== "End"
-                ) {
-                  return;
-                }
-
-                event.preventDefault();
-                let nextIndex = index;
-                if (event.key === "ArrowRight") {
-                  nextIndex = (index + 1) % options.length;
-                }
-                if (event.key === "ArrowLeft") {
-                  nextIndex = (index - 1 + options.length) % options.length;
-                }
-                if (event.key === "Home") {
-                  nextIndex = 0;
-                }
-                if (event.key === "End") {
-                  nextIndex = options.length - 1;
-                }
-                onChange(options[nextIndex].id);
-              }}
-            >
-              {option.label}
-            </button>
-          );
-        })}
-      </div>
-      <p className="min-h-10 text-xs leading-relaxed text-muted-foreground">
-        {selectedOption?.description || "\u00A0"}
-      </p>
-    </div>
-  );
-}
-
 function normalizeBaseUrl(url: string): string {
   const trimmed = url.trim();
   if (!trimmed) return "";
   const withProtocol = /^https?:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`;
   return withProtocol.endsWith("/") ? withProtocol : `${withProtocol}/`;
+}
+
+function normalizeMintUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+  const withProtocol = /^https?:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`;
+  return withProtocol.replace(/\/+$/, "");
+}
+
+function proofIdentity(proof: WalletProof): string {
+  if (typeof proof.secret === "string" && proof.secret.length > 0) {
+    return proof.secret;
+  }
+  return `${String(proof.id)}:${Number(proof.amount)}:${String(proof.C || "")}`;
+}
+
+function sumProofsBalanceSats(proofs: WalletProof[]): number {
+  return proofs.reduce((sum, proof) => sum + Number(proof.amount || 0), 0);
+}
+
+function encodeCashuTokenV4(
+  mintUrl: string,
+  unit: MintUnit,
+  proofs: CashuProof[]
+): string {
+  const normalizedProofs = proofs.map((proof) => ({
+    id: String(proof.id || ""),
+    amount: Number(proof.amount || 0),
+    secret: String(proof.secret || ""),
+    C: String(proof.C || ""),
+  }));
+
+  if (
+    normalizedProofs.some(
+      (proof) =>
+        !proof.id ||
+        !proof.secret ||
+        !proof.C ||
+        !Number.isFinite(proof.amount) ||
+        proof.amount <= 0
+    )
+  ) {
+    throw new Error("Mint returned invalid proofs for token generation");
+  }
+
+  return getEncodedTokenV4({
+    mint: mintUrl,
+    unit,
+    proofs: normalizedProofs,
+  });
+}
+
+async function createWalletForMint(
+  candidateMintUrl: string
+): Promise<{ wallet: CashuWallet; unit: MintUnit; preferredKeysetId?: string }> {
+  const mint = new CashuMint(candidateMintUrl);
+  const keysets = await mint.getKeySets();
+  const activeKeysets = keysets.keysets.filter((keyset) => keyset.active);
+  const msatKeyset = activeKeysets.find(
+    (keyset) => String(keyset.unit).toLowerCase() === "msat"
+  );
+  const satKeyset = activeKeysets.find(
+    (keyset) => String(keyset.unit).toLowerCase() === "sat"
+  );
+  const preferredUnit = msatKeyset ? "msat" : satKeyset ? "sat" : null;
+
+  if (!preferredUnit) {
+    const units = [...new Set(activeKeysets.map((keyset) => String(keyset.unit).toLowerCase()))];
+    throw new Error(
+      `Mint ${candidateMintUrl} has no active sat/msat keyset (units: ${
+        units.join(", ") || "none"
+      })`
+    );
+  }
+
+  const wallet = new CashuWallet(mint, { unit: preferredUnit });
+  await wallet.loadMint();
+  return {
+    wallet,
+    unit: preferredUnit,
+    preferredKeysetId: (preferredUnit === "msat" ? msatKeyset?.id : satKeyset?.id) || undefined,
+  };
 }
 
 function formatSats(msats: number): string {
@@ -282,7 +332,14 @@ export default function NodeKeyWorkflows({
   availableBaseUrls,
   storedApiKeys,
   onUpsertKey,
+  activateCreateSignal,
+  showLightningSection,
+  showChildSection,
+  minimalLayout,
 }: NodeKeyWorkflowsProps) {
+  const shouldShowLightningSection = showLightningSection ?? true;
+  const shouldShowChildSection = showChildSection ?? true;
+  const isMinimalLayout = minimalLayout ?? false;
   const normalizedDefaultBaseUrl = normalizeBaseUrl(defaultBaseUrl) || defaultBaseUrl;
 
   const endpointOptions = useMemo(() => {
@@ -362,14 +419,9 @@ export default function NodeKeyWorkflows({
   }, []);
 
   const [createAmount, setCreateAmount] = useState("");
-  const [createBalanceLimit, setCreateBalanceLimit] = useState("");
-  const [createBalanceLimitReset, setCreateBalanceLimitReset] = useState("");
-  const [createValidityDate, setCreateValidityDate] = useState("");
-  const [createInvoice, setCreateInvoice] = useState<LightningInvoice | null>(null);
-  const [createInvoiceStatus, setCreateInvoiceStatus] = useState<string>("idle");
+  const [createLabel, setCreateLabel] = useState("");
   const [createdApiKey, setCreatedApiKey] = useState<string | null>(null);
-  const [isCreatingInvoice, setIsCreatingInvoice] = useState(false);
-  const [isPollingCreateInvoice, setIsPollingCreateInvoice] = useState(false);
+  const [isCreatingFromBalance, setIsCreatingFromBalance] = useState(false);
 
   const [selectedTopupKeyId, setSelectedTopupKeyId] = useState<string>("");
   const [topupApiKey, setTopupApiKey] = useState("");
@@ -439,81 +491,203 @@ export default function NodeKeyWorkflows({
     []
   );
 
-  const handleCreateInvoice = useCallback(async () => {
+  const handleCreateFromBalance = useCallback(async () => {
     const amount = Number.parseInt(createAmount, 10);
     if (!Number.isFinite(amount) || amount <= 0) {
       toast.error("Enter a valid amount in sats");
       return;
     }
 
-    setIsCreatingInvoice(true);
-    setIsPollingCreateInvoice(false);
-    setCreatedApiKey(null);
-    setCreateInvoiceStatus("pending");
+    const readStoredActiveMint = () => {
+      if (typeof window === "undefined") return "";
+      return normalizeMintUrl(localStorage.getItem(ACTIVE_MINT_STORAGE_KEY) || "");
+    };
 
-    try {
-      const payload: {
-        amount_sats: number;
-        purpose: "create";
-        balance_limit?: number;
-        balance_limit_reset?: string;
-        validity_date?: number;
-      } = {
-        amount_sats: amount,
-        purpose: "create",
-      };
-
-      if (createBalanceLimit.trim()) {
-        const value = Number.parseInt(createBalanceLimit.trim(), 10);
-        if (Number.isFinite(value) && value > 0) {
-          payload.balance_limit = value;
-        }
+    const fetchAcceptedMints = async (baseUrl: string): Promise<string[]> => {
+      try {
+        const response = await fetch(`${baseUrl}v1/info`, {
+          cache: "no-store",
+        });
+        if (!response.ok) return [];
+        const payload = (await response.json()) as { mints?: string[] };
+        if (!Array.isArray(payload?.mints)) return [];
+        return payload.mints.map((mint) => normalizeMintUrl(mint)).filter(Boolean);
+      } catch {
+        return [];
       }
-      if (createBalanceLimitReset.trim()) {
-        payload.balance_limit_reset = createBalanceLimitReset.trim();
-      }
+    };
 
-      const validityDate = endOfDayUnix(createValidityDate);
-      if (validityDate) {
-        payload.validity_date = validityDate;
+    const createTokenFromBalance = async (
+      amountSats: number,
+      nodeMints: string[],
+      preferredMint: string
+    ): Promise<{ token: string }> => {
+      const proofsBefore = readCashuProofs() as WalletProof[];
+      if (!Array.isArray(proofsBefore) || proofsBefore.length === 0) {
+        throw new Error("No wallet balance available");
       }
 
-      const invoice = await createLightningInvoice(createBaseUrl, payload);
-      setCreateInvoice(invoice);
-      toast.success("Lightning invoice created");
+      const walletMintBalances = new Map<string, number>();
+      for (const proof of proofsBefore) {
+        const mint = normalizeMintUrl(proof.mintUrl || "");
+        if (!mint) continue;
+        walletMintBalances.set(
+          mint,
+          (walletMintBalances.get(mint) || 0) + Number(proof.amount || 0)
+        );
+      }
 
-      setIsPollingCreateInvoice(true);
-      const status = await pollInvoiceUntilResolved(
-        createBaseUrl,
-        invoice.invoice_id,
-        setCreateInvoiceStatus
+      const sortedWalletMints = Array.from(walletMintBalances.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([mint]) => mint);
+
+      const normalizedNodeMints = Array.from(
+        new Set(nodeMints.map((mint) => normalizeMintUrl(mint)).filter(Boolean))
+      );
+      const sortedNodeMints = normalizedNodeMints.sort(
+        (a, b) => (walletMintBalances.get(b) || 0) - (walletMintBalances.get(a) || 0)
       );
 
-      if (status.status === "paid" && status.api_key) {
-        await onUpsertKey(createBaseUrl, status.api_key, "Lightning key");
-        setCreatedApiKey(status.api_key);
-        toast.success("Payment received and API key synced");
-      } else if (status.status === "paid") {
-        toast.success("Payment received");
-      } else {
-        toast.error(`Invoice ${status.status}`);
+      const nodeMintSet = new Set(sortedNodeMints);
+      const hasNodeMintHints = nodeMintSet.size > 0;
+      const baseCandidates = Array.from(
+        new Set(
+          [
+            normalizeMintUrl(preferredMint),
+            ...sortedWalletMints,
+            normalizeMintUrl(FALLBACK_MINT_URL),
+          ].filter(Boolean)
+        )
+      );
+      const candidates = hasNodeMintHints
+        ? [
+            ...baseCandidates.filter((mint) => nodeMintSet.has(mint)),
+            ...baseCandidates.filter((mint) => !nodeMintSet.has(mint)),
+          ]
+        : baseCandidates;
+
+      if (candidates.length === 0) {
+        throw new Error("No eligible mint found for wallet balance");
       }
+
+      let lastError: unknown = null;
+
+      for (const mint of candidates) {
+        try {
+          const { wallet, unit, preferredKeysetId } = await createWalletForMint(mint);
+          const proofsForMint = getProofsForMint(proofsBefore, mint);
+          if (!Array.isArray(proofsForMint) || proofsForMint.length === 0) {
+            continue;
+          }
+          const amountInMintUnit = unit === "msat" ? amountSats * 1000 : amountSats;
+          const availableForMint = sumProofsBalanceSats(proofsForMint);
+          if (availableForMint < amountInMintUnit) {
+            continue;
+          }
+
+          const sendOptions = {
+            ...(preferredKeysetId ? { keysetId: preferredKeysetId } : {}),
+          };
+          let sendResult: Awaited<ReturnType<CashuWallet["send"]>>;
+          try {
+            sendResult = await wallet.send(amountInMintUnit, proofsForMint as CashuProof[], {
+              ...sendOptions,
+              includeFees: true,
+            });
+          } catch (firstSendError) {
+            const firstMessage =
+              firstSendError instanceof Error
+                ? firstSendError.message
+                : String(firstSendError);
+            if (
+              firstMessage.includes("Not enough funds available") ||
+              firstMessage.includes("Token already spent") ||
+              firstMessage.includes("Not enough balance to send")
+            ) {
+              sendResult = await wallet.send(amountInMintUnit, proofsForMint as CashuProof[], {
+                ...sendOptions,
+              });
+            } else {
+              throw firstSendError;
+            }
+          }
+
+          const sendProofs = (sendResult?.send || []) as CashuProof[];
+          const keepProofs = (sendResult?.keep || []) as CashuProof[];
+          if (sendProofs.length === 0) {
+            throw new Error("Unable to generate Cashu token");
+          }
+
+          const mintedProofIds = new Set(proofsForMint.map((proof) => proofIdentity(proof)));
+          const untouched = proofsBefore.filter(
+            (proof) => !mintedProofIds.has(proofIdentity(proof))
+          );
+          const keepWithMetadata = annotateProofsWithMint(keepProofs, mint);
+          writeCashuProofs([...untouched, ...keepWithMetadata]);
+
+          const nextBalance = getProofsBalanceSats();
+          appendTransaction({
+            type: "send",
+            amount: amountSats,
+            timestamp: Date.now(),
+            status: "success",
+            message: "Spent wallet balance for API key creation",
+            balance: nextBalance,
+          });
+
+          return { token: encodeCashuTokenV4(mint, unit, sendProofs) };
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      if (lastError instanceof Error) {
+        throw new Error(lastError.message);
+      }
+      throw new Error("Insufficient wallet balance on available mints");
+    };
+
+    setIsCreatingFromBalance(true);
+    setCreatedApiKey(null);
+
+    try {
+      const nodeMints = await fetchAcceptedMints(createBaseUrl);
+      const preferredMint = readStoredActiveMint();
+      const result = await createTokenFromBalance(amount, nodeMints, preferredMint);
+
+      const response = await fetch(`${createBaseUrl}v1/wallet/info`, {
+        headers: {
+          Authorization: `Bearer ${result.token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw await parseResponseError(
+          response,
+          "Failed to create API key from wallet balance"
+        );
+      }
+
+      const payload = (await response.json()) as {
+        api_key?: string;
+        apiKey?: string;
+      };
+      const apiKey = String(payload.api_key || payload.apiKey || "").trim();
+      if (!apiKey) {
+        throw new Error("API key response did not include an api_key");
+      }
+
+      await onUpsertKey(createBaseUrl, apiKey, createLabel.trim() || "Unnamed");
+      setCreatedApiKey(apiKey);
+      setCreateAmount("");
+      setCreateLabel("");
+      toast.success("API key created from wallet balance");
     } catch (error) {
-      setCreateInvoiceStatus("error");
-      toast.error(getErrorMessage(error, "Failed to create invoice"));
+      toast.error(getErrorMessage(error, "Failed to create API key from balance"));
     } finally {
-      setIsCreatingInvoice(false);
-      setIsPollingCreateInvoice(false);
+      setIsCreatingFromBalance(false);
     }
-  }, [
-    createAmount,
-    createBalanceLimit,
-    createBalanceLimitReset,
-    createBaseUrl,
-    createValidityDate,
-    onUpsertKey,
-    pollInvoiceUntilResolved,
-  ]);
+  }, [createAmount, createBaseUrl, createLabel, onUpsertKey]);
 
   const handleTopupInvoice = useCallback(async () => {
     const amount = Number.parseInt(topupAmount, 10);
@@ -762,7 +936,7 @@ export default function NodeKeyWorkflows({
       {
         id: "create",
         label: "Create",
-        description: "Generate a Lightning invoice to create a new API key.",
+        description: "Create a new API key by spending from wallet balance.",
       },
       {
         id: "topup",
@@ -797,6 +971,7 @@ export default function NodeKeyWorkflows({
     "create"
   );
   const [childMode, setChildMode] = useState<"create" | "status">("create");
+  const createAmountInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setLightningMode((current) =>
@@ -817,12 +992,25 @@ export default function NodeKeyWorkflows({
     window.localStorage.setItem("platform:workflow:child-tab", childMode);
   }, [childMode]);
 
-  const controlClass = "platform-input";
+  useEffect(() => {
+    if (!shouldShowLightningSection) return;
+    if (activateCreateSignal === undefined) return;
+    setLightningMode("create");
+    setTimeout(() => {
+      createAmountInputRef.current?.focus();
+    }, 0);
+  }, [activateCreateSignal, shouldShowLightningSection]);
+
+  const lightningModeDescription =
+    lightningTabOptions.find((option) => option.id === lightningMode)?.description || "\u00A0";
+  const childModeDescription =
+    childTabOptions.find((option) => option.id === childMode)?.description || "\u00A0";
   const labelClass = "text-xs font-medium text-muted-foreground";
 
   return (
-    <div className="space-y-5">
-      <section className="platform-card p-5">
+    <div className={isMinimalLayout ? "space-y-4" : "space-y-5"}>
+      {shouldShowLightningSection ? (
+        <SectionShell isMinimalLayout={isMinimalLayout}>
         <div className="space-y-3">
           <div className="space-y-1">
             <h3 className="flex items-center gap-2 text-base font-semibold tracking-tight">
@@ -833,13 +1021,22 @@ export default function NodeKeyWorkflows({
               Create keys, top up existing keys, or recover a key from a paid invoice.
             </p>
           </div>
-          <SegmentedTabs
-            idPrefix="lightning-workflow"
-            label="Lightning workflow tabs"
-            options={lightningTabOptions}
+          <Tabs
             value={lightningMode}
-            onChange={setLightningMode}
-          />
+            onValueChange={(value) => setLightningMode(value as "create" | "topup" | "recover")}
+            className="w-full max-w-[24rem] gap-2"
+          >
+            <TabsList>
+              {lightningTabOptions.map((option) => (
+                <TabsTrigger key={option.id} value={option.id}>
+                  {option.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+          <p className="min-h-10 text-xs leading-relaxed text-muted-foreground">
+            {lightningModeDescription}
+          </p>
         </div>
 
         <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_19rem]">
@@ -854,73 +1051,53 @@ export default function NodeKeyWorkflows({
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="space-y-1.5 sm:col-span-2">
                     <span className={labelClass}>Endpoint</span>
-                    <select
-                      value={createBaseUrl}
-                      onChange={(event) => setCreateBaseUrl(event.target.value)}
-                      className={controlClass}
-                    >
-                      {endpointOptions.map((url) => (
-                        <option key={`create-${url}`} value={url}>
-                          {url}
-                        </option>
-                      ))}
-                    </select>
+                    <Select value={createBaseUrl} onValueChange={setCreateBaseUrl}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {endpointOptions.map((url) => (
+                          <SelectItem key={`create-${url}`} value={url}>
+                            {url}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </label>
+                  <label className="space-y-1.5 sm:col-span-2">
+                    <span className={labelClass}>Label (optional)</span>
+                    <Input
+                      value={createLabel}
+                      onChange={(event) => setCreateLabel(event.target.value)}
+                      placeholder="Unnamed"
+                    />
                   </label>
                   <label className="space-y-1.5">
                     <span className={labelClass}>Amount (sats)</span>
-                    <input
+                    <Input
+                      ref={createAmountInputRef}
                       value={createAmount}
                       onChange={(event) => setCreateAmount(event.target.value)}
                       type="number"
                       min={1}
-                      className={controlClass}
                       placeholder="1000"
-                    />
-                  </label>
-                  <label className="space-y-1.5">
-                    <span className={labelClass}>Validity date</span>
-                    <input
-                      value={createValidityDate}
-                      onChange={(event) => setCreateValidityDate(event.target.value)}
-                      type="date"
-                      className={controlClass}
-                    />
-                  </label>
-                  <label className="space-y-1.5">
-                    <span className={labelClass}>Balance limit (optional, msats)</span>
-                    <input
-                      value={createBalanceLimit}
-                      onChange={(event) => setCreateBalanceLimit(event.target.value)}
-                      type="number"
-                      min={1}
-                      className={controlClass}
-                      placeholder="500000"
-                    />
-                  </label>
-                  <label className="space-y-1.5">
-                    <span className={labelClass}>Limit reset rule (optional)</span>
-                    <input
-                      value={createBalanceLimitReset}
-                      onChange={(event) => setCreateBalanceLimitReset(event.target.value)}
-                      className={controlClass}
-                      placeholder="daily"
                     />
                   </label>
                 </div>
 
-                <button
+                <Button
                   onClick={() => {
-                    void handleCreateInvoice();
+                    void handleCreateFromBalance();
                   }}
-                  disabled={isCreatingInvoice || isPollingCreateInvoice}
-                  className="platform-btn-primary w-full py-2.5"
+                  disabled={isCreatingFromBalance}
+                  className="w-full"
                   type="button"
                 >
-                  {isCreatingInvoice || isPollingCreateInvoice ? (
+                  {isCreatingFromBalance ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : null}
-                  {isPollingCreateInvoice ? "Waiting for payment" : "Create invoice"}
-                </button>
+                  {isCreatingFromBalance ? "Creating key..." : "Create key from balance"}
+                </Button>
               </div>
             ) : null}
 
@@ -934,59 +1111,60 @@ export default function NodeKeyWorkflows({
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="space-y-1.5 sm:col-span-2">
                     <span className={labelClass}>Saved key</span>
-                    <select
+                    <Select
                       value={selectedTopupKeyId}
-                      onChange={(event) => setSelectedTopupKeyId(event.target.value)}
-                      className={controlClass}
+                      onValueChange={setSelectedTopupKeyId}
+                      disabled={keyOptions.length === 0}
                     >
-                      {keyOptions.length === 0 ? (
-                        <option value="">No keys available</option>
-                      ) : (
-                        keyOptions.map((item) => (
-                          <option key={item.id} value={item.id}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="No keys available" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {keyOptions.map((item) => (
+                          <SelectItem key={item.id} value={item.id}>
                             {item.label} ({shortKey(item.key)})
-                          </option>
-                        ))
-                      )}
-                    </select>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </label>
                   <label className="space-y-1.5">
                     <span className={labelClass}>Endpoint</span>
-                    <select
-                      value={topupBaseUrl}
-                      onChange={(event) => setTopupBaseUrl(event.target.value)}
-                      className={controlClass}
-                    >
-                      {endpointOptions.map((url) => (
-                        <option key={`topup-${url}`} value={url}>
-                          {url}
-                        </option>
-                      ))}
-                    </select>
+                    <Select value={topupBaseUrl} onValueChange={setTopupBaseUrl}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {endpointOptions.map((url) => (
+                          <SelectItem key={`topup-${url}`} value={url}>
+                            {url}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </label>
                   <label className="space-y-1.5">
                     <span className={labelClass}>Amount (sats)</span>
-                    <input
+                    <Input
                       value={topupAmount}
                       onChange={(event) => setTopupAmount(event.target.value)}
                       type="number"
                       min={1}
-                      className={controlClass}
                       placeholder="1000"
                     />
                   </label>
                   <label className="space-y-1.5 sm:col-span-2">
                     <span className={labelClass}>API key</span>
-                    <input
+                    <Input
                       value={topupApiKey}
                       onChange={(event) => setTopupApiKey(event.target.value)}
-                      className={`${controlClass} font-mono text-xs`}
+                      className="font-mono text-xs"
                       placeholder="sk-..."
                     />
                   </label>
                 </div>
 
-                <button
+                <Button
                   onClick={() => {
                     void handleTopupInvoice();
                   }}
@@ -995,7 +1173,7 @@ export default function NodeKeyWorkflows({
                     isPollingTopupInvoice ||
                     !topupApiKey.trim()
                   }
-                  className="platform-btn-primary w-full py-2.5"
+                  className="w-full"
                   type="button"
                 >
                   {isCreatingTopupInvoice || isPollingTopupInvoice ? (
@@ -1006,7 +1184,7 @@ export default function NodeKeyWorkflows({
                   {isPollingTopupInvoice
                     ? "Waiting for payment"
                     : "Create top-up invoice"}
-                </button>
+                </Button>
               </div>
             ) : null}
 
@@ -1019,33 +1197,34 @@ export default function NodeKeyWorkflows({
               >
                 <label className="space-y-1.5">
                   <span className={labelClass}>Endpoint</span>
-                  <select
-                    value={recoverBaseUrl}
-                    onChange={(event) => setRecoverBaseUrl(event.target.value)}
-                    className={controlClass}
-                  >
-                    {endpointOptions.map((url) => (
-                      <option key={`recover-${url}`} value={url}>
-                        {url}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={recoverBaseUrl} onValueChange={setRecoverBaseUrl}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {endpointOptions.map((url) => (
+                        <SelectItem key={`recover-${url}`} value={url}>
+                          {url}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </label>
                 <label className="space-y-1.5">
                   <span className={labelClass}>BOLT11 invoice</span>
-                  <textarea
+                  <Textarea
                     value={recoverBolt11}
                     onChange={(event) => setRecoverBolt11(event.target.value)}
                     placeholder="Paste BOLT11 invoice"
-                    className={`${controlClass} h-28 resize-none`}
+                    className="h-28 resize-none"
                   />
                 </label>
-                <button
+                <Button
                   onClick={() => {
                     void handleRecoverInvoice();
                   }}
                   disabled={isRecoveringInvoice || !recoverBolt11.trim()}
-                  className="platform-btn-primary w-full py-2.5"
+                  className="w-full"
                   type="button"
                 >
                   {isRecoveringInvoice ? (
@@ -1054,7 +1233,7 @@ export default function NodeKeyWorkflows({
                     <RefreshCw className="h-4 w-4" />
                   )}
                   Recover API key
-                </button>
+                </Button>
                 {recoveredApiKey ? (
                   <p className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs text-foreground">
                     Recovered key: <span className="font-mono">{shortKey(recoveredApiKey)}</span>
@@ -1065,64 +1244,13 @@ export default function NodeKeyWorkflows({
           </div>
 
           <aside className="rounded-xl border border-border/60 bg-muted/10 p-4 space-y-3 min-h-[30rem]">
-            <p className="text-xs font-medium text-muted-foreground">Invoice preview</p>
-            {lightningMode === "create" && createInvoice ? (
-              <>
-                <p className="text-xs text-muted-foreground">
-                  Status:{" "}
-                  <span className="font-semibold text-foreground">{createInvoiceStatus}</span>
-                </p>
-                <div className="platform-card-soft flex justify-center p-2">
-                  <QRCodeSVG value={createInvoice.bolt11} size={120} />
-                </div>
-                <textarea
-                  readOnly
-                  value={createInvoice.bolt11}
-                  className={`${controlClass} h-24 resize-none font-mono text-[11px]`}
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      void handleCopy(createInvoice.bolt11, `create-bolt11-${createInvoice.invoice_id}`);
-                    }}
-                    className="platform-btn-secondary gap-1 px-2 py-1.5 text-xs"
-                    type="button"
-                  >
-                    {copiedValue === `create-bolt11-${createInvoice.invoice_id}` ? (
-                      <Check className="h-3.5 w-3.5" />
-                    ) : (
-                      <Copy className="h-3.5 w-3.5" />
-                    )}
-                    Copy
-                  </button>
-                  <button
-                    onClick={() => {
-                      void (async () => {
-                        try {
-                          const status = await fetchLightningInvoiceStatus(
-                            createBaseUrl,
-                            createInvoice.invoice_id
-                          );
-                          setCreateInvoiceStatus(status.status);
-                          toast.success("Invoice status refreshed");
-                        } catch (error) {
-                          toast.error(getErrorMessage(error, "Failed to refresh invoice"));
-                        }
-                      })();
-                    }}
-                    className="platform-btn-secondary gap-1 px-2 py-1.5 text-xs"
-                    type="button"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    Refresh
-                  </button>
-                </div>
-                {createdApiKey ? (
-                  <p className="text-xs text-foreground">
-                    Key created: <span className="font-mono">{shortKey(createdApiKey)}</span>
-                  </p>
-                ) : null}
-              </>
+            <p className="text-xs font-medium text-muted-foreground">
+              {lightningMode === "create" ? "Create status" : "Invoice preview"}
+            </p>
+            {lightningMode === "create" && createdApiKey ? (
+              <p className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs text-foreground">
+                Key created: <span className="font-mono">{shortKey(createdApiKey)}</span>
+              </p>
             ) : null}
 
             {lightningMode === "topup" && topupInvoice ? (
@@ -1131,19 +1259,20 @@ export default function NodeKeyWorkflows({
                   Status:{" "}
                   <span className="font-semibold text-foreground">{topupInvoiceStatus}</span>
                 </p>
-                <div className="platform-card-soft flex justify-center p-2">
+                <Card className="gap-0 flex justify-center p-2 py-2 shadow-none">
                   <QRCodeSVG value={topupInvoice.bolt11} size={120} />
-                </div>
-                <textarea
+                </Card>
+                <Textarea
                   readOnly
                   value={topupInvoice.bolt11}
-                  className={`${controlClass} h-24 resize-none font-mono text-[11px]`}
+                  className="h-24 resize-none font-mono text-[11px]"
                 />
-                <button
+                <Button
                   onClick={() => {
                     void handleCopy(topupInvoice.bolt11, `topup-bolt11-${topupInvoice.invoice_id}`);
                   }}
-                  className="platform-btn-secondary gap-1 px-2 py-1.5 text-xs"
+                  variant="secondary"
+                  size="sm"
                   type="button"
                 >
                   {copiedValue === `topup-bolt11-${topupInvoice.invoice_id}` ? (
@@ -1152,12 +1281,11 @@ export default function NodeKeyWorkflows({
                     <Copy className="h-3.5 w-3.5" />
                   )}
                   Copy
-                </button>
+                </Button>
               </>
             ) : null}
 
             {(lightningMode === "recover" ||
-              (lightningMode === "create" && !createInvoice) ||
               (lightningMode === "topup" && !topupInvoice)) && (
               <div className="rounded-lg border border-dashed border-border/70 p-3 text-xs text-muted-foreground leading-relaxed">
                 {lightningMode === "recover"
@@ -1167,9 +1295,11 @@ export default function NodeKeyWorkflows({
             )}
           </aside>
         </div>
-      </section>
+        </SectionShell>
+      ) : null}
 
-      <section className="platform-card p-5">
+      {shouldShowChildSection ? (
+        <SectionShell isMinimalLayout={isMinimalLayout}>
         <div className="space-y-3">
           <div className="space-y-1">
             <h3 className="text-base font-semibold tracking-tight">Child Key Tools</h3>
@@ -1177,13 +1307,22 @@ export default function NodeKeyWorkflows({
               Generate child keys from a parent key and inspect child-key limits.
             </p>
           </div>
-          <SegmentedTabs
-            idPrefix="child-workflow"
-            label="Child key workflow tabs"
-            options={childTabOptions}
+          <Tabs
             value={childMode}
-            onChange={setChildMode}
-          />
+            onValueChange={(value) => setChildMode(value as "create" | "status")}
+            className="w-full max-w-[24rem] gap-2"
+          >
+            <TabsList>
+              {childTabOptions.map((option) => (
+                <TabsTrigger key={option.id} value={option.id}>
+                  {option.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+          <p className="min-h-10 text-xs leading-relaxed text-muted-foreground">
+            {childModeDescription}
+          </p>
         </div>
 
         <div className="mt-4 rounded-xl border border-border/60 bg-muted/15 p-4 space-y-4 min-h-[26rem]">
@@ -1197,92 +1336,90 @@ export default function NodeKeyWorkflows({
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="space-y-1.5 sm:col-span-2">
                   <span className={labelClass}>Parent key (saved keys)</span>
-                  <select
+                  <Select
                     value={selectedParentKeyId}
-                    onChange={(event) => setSelectedParentKeyId(event.target.value)}
-                    className={controlClass}
+                    onValueChange={setSelectedParentKeyId}
+                    disabled={keyOptions.length === 0}
                   >
-                    {keyOptions.length === 0 ? (
-                      <option value="">No parent key available</option>
-                    ) : (
-                      keyOptions.map((item) => (
-                        <option key={`parent-${item.id}`} value={item.id}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="No parent key available" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {keyOptions.map((item) => (
+                        <SelectItem key={`parent-${item.id}`} value={item.id}>
                           {item.label} ({shortKey(item.key)})
-                        </option>
-                      ))
-                    )}
-                  </select>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </label>
                 <label className="space-y-1.5">
                   <span className={labelClass}>Endpoint</span>
-                  <select
-                    value={childBaseUrl}
-                    onChange={(event) => setChildBaseUrl(event.target.value)}
-                    className={controlClass}
-                  >
-                    {endpointOptions.map((url) => (
-                      <option key={`child-${url}`} value={url}>
-                        {url}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={childBaseUrl} onValueChange={setChildBaseUrl}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {endpointOptions.map((url) => (
+                        <SelectItem key={`child-${url}`} value={url}>
+                          {url}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </label>
                 <label className="space-y-1.5">
                   <span className={labelClass}>Number of keys</span>
-                  <input
+                  <Input
                     value={childCount}
                     onChange={(event) => setChildCount(event.target.value)}
                     type="number"
                     min={1}
                     max={50}
-                    className={controlClass}
                   />
                 </label>
                 <label className="space-y-1.5 sm:col-span-2">
                   <span className={labelClass}>Parent API key</span>
-                  <input
+                  <Input
                     value={parentApiKey}
                     onChange={(event) => setParentApiKey(event.target.value)}
-                    className={`${controlClass} font-mono text-xs`}
+                    className="font-mono text-xs"
                     placeholder="sk-..."
                   />
                 </label>
                 <label className="space-y-1.5">
                   <span className={labelClass}>Balance limit (optional, msats)</span>
-                  <input
+                  <Input
                     value={childBalanceLimit}
                     onChange={(event) => setChildBalanceLimit(event.target.value)}
                     type="number"
                     min={1}
-                    className={controlClass}
                   />
                 </label>
                 <label className="space-y-1.5">
                   <span className={labelClass}>Limit reset rule (optional)</span>
-                  <input
+                  <Input
                     value={childBalanceLimitReset}
                     onChange={(event) => setChildBalanceLimitReset(event.target.value)}
-                    className={controlClass}
                     placeholder="daily"
                   />
                 </label>
                 <label className="space-y-1.5">
                   <span className={labelClass}>Validity date</span>
-                  <input
+                  <Input
                     value={childValidityDate}
                     onChange={(event) => setChildValidityDate(event.target.value)}
                     type="date"
-                    className={controlClass}
                   />
                 </label>
               </div>
 
-              <button
+              <Button
                 onClick={() => {
                   void handleCreateChildKeys();
                 }}
                 disabled={isCreatingChildKeys || !parentApiKey.trim()}
-                className="platform-btn-primary w-full py-2.5"
+                className="w-full"
                 type="button"
               >
                 {isCreatingChildKeys ? (
@@ -1291,7 +1428,7 @@ export default function NodeKeyWorkflows({
                   <Zap className="h-4 w-4" />
                 )}
                 Generate child keys
-              </button>
+              </Button>
 
               {childCostMsats !== null || parentBalanceMsats !== null ? (
                 <div className="rounded-lg border border-border/70 bg-background/40 p-3 text-xs text-muted-foreground">
@@ -1308,11 +1445,12 @@ export default function NodeKeyWorkflows({
                     <p className="text-xs text-muted-foreground">
                       Generated keys: {createdChildKeys.length}
                     </p>
-                    <button
+                    <Button
                       onClick={() => {
                         void handleCopy(createdChildKeys.join("\n"), "all-child-keys");
                       }}
-                      className="platform-btn-secondary gap-1 px-2 py-1.5 text-xs"
+                      variant="secondary"
+                      size="sm"
                       type="button"
                     >
                       {copiedValue === "all-child-keys" ? (
@@ -1321,7 +1459,7 @@ export default function NodeKeyWorkflows({
                         <Copy className="h-3.5 w-3.5" />
                       )}
                       Copy all
-                    </button>
+                    </Button>
                   </div>
                   <div className="space-y-1 max-h-44 overflow-auto">
                     {createdChildKeys.map((key) => (
@@ -1330,11 +1468,12 @@ export default function NodeKeyWorkflows({
                         className="flex items-center gap-2 rounded-md border border-border/50 bg-muted/20 px-2 py-1.5"
                       >
                         <code className="flex-1 truncate text-[11px]">{key}</code>
-                        <button
+                        <Button
                           onClick={() => {
                             void handleCopy(key, `child-${key}`);
                           }}
-                          className="platform-btn-secondary gap-1 px-2 py-1 text-xs"
+                          variant="secondary"
+                          size="sm"
                           type="button"
                         >
                           {copiedValue === `child-${key}` ? (
@@ -1342,7 +1481,7 @@ export default function NodeKeyWorkflows({
                           ) : (
                             <Copy className="h-3.5 w-3.5" />
                           )}
-                        </button>
+                        </Button>
                       </div>
                     ))}
                   </div>
@@ -1361,35 +1500,36 @@ export default function NodeKeyWorkflows({
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="space-y-1.5">
                   <span className={labelClass}>Endpoint</span>
-                  <select
-                    value={checkChildBaseUrl}
-                    onChange={(event) => setCheckChildBaseUrl(event.target.value)}
-                    className={controlClass}
-                  >
-                    {endpointOptions.map((url) => (
-                      <option key={`check-child-${url}`} value={url}>
-                        {url}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={checkChildBaseUrl} onValueChange={setCheckChildBaseUrl}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {endpointOptions.map((url) => (
+                        <SelectItem key={`check-child-${url}`} value={url}>
+                          {url}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </label>
                 <label className="space-y-1.5 sm:col-span-2">
                   <span className={labelClass}>Child API key</span>
-                  <input
+                  <Input
                     value={childKeyToCheck}
                     onChange={(event) => setChildKeyToCheck(event.target.value)}
                     placeholder="sk-..."
-                    className={`${controlClass} font-mono text-xs`}
+                    className="font-mono text-xs"
                   />
                 </label>
               </div>
 
-              <button
+              <Button
                 onClick={() => {
                   void handleCheckChildStatus();
                 }}
                 disabled={isCheckingChildKey || !childKeyToCheck.trim()}
-                className="platform-btn-primary w-full py-2.5"
+                className="w-full"
                 type="button"
               >
                 {isCheckingChildKey ? (
@@ -1398,7 +1538,7 @@ export default function NodeKeyWorkflows({
                   <RefreshCw className="h-4 w-4" />
                 )}
                 Check status
-              </button>
+              </Button>
 
               {childKeyStatus ? (
                 <div className="rounded-lg border border-border/70 bg-background/40 p-3 text-sm space-y-2">
@@ -1444,7 +1584,8 @@ export default function NodeKeyWorkflows({
             </div>
           ) : null}
         </div>
-      </section>
+        </SectionShell>
+      ) : null}
     </div>
   );
 }

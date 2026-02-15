@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
+  Code2,
   ExternalLink,
   Flame,
   Home,
@@ -14,13 +15,15 @@ import {
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useAuth } from "@/context/AuthProvider";
-import { cn } from "@/lib/utils";
 import { DEFAULT_BASE_URL } from "@/lib/utils";
 import DeveloperHome from "@/components/platform/DeveloperHome";
+import PlaygroundPanel from "@/components/platform/PlaygroundPanel";
 import ApiKeysPanel from "@/components/platform/ApiKeysPanel";
 import Nip60WalletPanel from "@/components/platform/Nip60WalletPanel";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 
-type PlatformTab = "home" | "api-keys" | "wallet";
+type PlatformTab = "home" | "playground" | "api-keys" | "wallet";
 
 function isOnionUrl(url: string): boolean {
   if (!url) return false;
@@ -60,7 +63,12 @@ export default function PlatformShell() {
     const handleTabNavigation = (event: Event) => {
       const customEvent = event as CustomEvent<{ tab?: PlatformTab }>;
       const requestedTab = customEvent.detail?.tab;
-      if (requestedTab === "home" || requestedTab === "api-keys" || requestedTab === "wallet") {
+      if (
+        requestedTab === "home" ||
+        requestedTab === "playground" ||
+        requestedTab === "api-keys" ||
+        requestedTab === "wallet"
+      ) {
         setActiveTab(requestedTab);
       }
     };
@@ -75,9 +83,6 @@ export default function PlatformShell() {
     setThemeMounted(true);
   }, []);
 
-  const tabClass =
-    "inline-flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors";
-
   const tabs: Array<{
     id: PlatformTab;
     label: string;
@@ -87,6 +92,11 @@ export default function PlatformShell() {
       id: "home",
       label: "Home",
       icon: Home,
+    },
+    {
+      id: "playground",
+      label: "Playground",
+      icon: Code2,
     },
     {
       id: "api-keys",
@@ -126,13 +136,14 @@ export default function PlatformShell() {
         <div className="grid items-start gap-4 md:grid-cols-[11.5rem_minmax(0,1fr)] md:gap-0">
           <aside className="space-y-5 md:sticky md:top-5 md:flex md:min-h-[calc(100vh-2.5rem)] md:flex-col md:self-start">
             <div className="space-y-2 px-1">
-              <button
+              <Button
                 onClick={() => setActiveTab("home")}
-                className="block w-full text-left text-xl font-semibold leading-tight cursor-pointer hover:text-foreground/90"
+                variant="ghost"
+                className="h-auto w-full justify-start px-0 text-left text-xl font-semibold"
                 type="button"
               >
                 Routstr Platform
-              </button>
+              </Button>
               <p className="text-[11px] text-muted-foreground/75">Developer Console</p>
             </div>
 
@@ -142,76 +153,77 @@ export default function PlatformShell() {
                   const TabIcon = tab.icon;
                   const isActive = activeTab === tab.id;
                   return (
-                    <button
+                    <Button
                       key={tab.id}
-                      className={`${tabClass} w-full justify-start border ${
-                        isActive
-                          ? "border-border/80 bg-muted/45 text-foreground"
-                          : "border-transparent text-muted-foreground hover:border-border/35 hover:bg-muted/20 hover:text-foreground"
-                      }`}
+                      variant={isActive ? "secondary" : "ghost"}
+                      size="lg"
+                      className="w-full justify-start"
                       onClick={() => setActiveTab(tab.id)}
                       type="button"
                     >
                       <TabIcon className="h-4 w-4" />
                       {tab.label}
-                    </button>
+                    </Button>
                   );
                 })}
               </nav>
               <div className="mt-4 space-y-2">
-                <a
-                  href="https://docs.routstr.com"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs font-normal text-muted-foreground transition-colors hover:bg-muted/20 hover:text-foreground"
+                <Button
+                  asChild
+                  variant="ghost"
+                  className="w-full justify-between"
                 >
-                  <span>Docs</span>
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </a>
-                <a
-                  href="https://chat.routstr.com"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex w-full items-center justify-between rounded-md px-2 py-1.5 text-xs font-normal text-muted-foreground transition-colors hover:bg-muted/20 hover:text-foreground"
+                  <a href="https://docs.routstr.com" target="_blank" rel="noreferrer">
+                    <span>Docs</span>
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                </Button>
+                <Button
+                  asChild
+                  variant="ghost"
+                  className="w-full justify-between"
                 >
-                  <span>Chat App</span>
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </a>
+                  <a href="https://chat.routstr.com" target="_blank" rel="noreferrer">
+                    <span>Chat App</span>
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </a>
+                </Button>
               </div>
-              <button
+              <Button
                 onClick={() => void logout()}
-                className="platform-btn-ghost mt-3 w-full justify-start gap-1.5 px-2.5 py-2 text-xs"
+                variant="ghost"
+                className="mt-3 w-full justify-start"
                 type="button"
               >
                 <LogOut className="h-3.5 w-3.5" />
                 Sign out
-              </button>
+              </Button>
               <div className="mt-3 px-2 md:mt-auto md:px-1">
-                <div className="inline-flex h-7 w-fit items-center rounded-lg bg-muted p-[2px] text-muted-foreground">
-                  {themeTabs.map((themeOption) => {
-                    const isActive = activeTheme === themeOption.value;
-                    const ThemeIcon = themeOption.icon;
-                    return (
-                      <button
-                        key={themeOption.value}
-                        type="button"
-                        onClick={() => setTheme(themeOption.value)}
-                        aria-label={`Set ${themeOption.label.toLowerCase()} theme`}
-                        title={themeOption.label}
-                        disabled={!themeMounted}
-                        className={cn(
-                          "relative inline-flex h-full w-8 items-center justify-center whitespace-nowrap rounded-md border border-transparent text-sm font-medium transition-all focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-none focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50",
-                          isActive
-                            ? "bg-background text-foreground shadow-sm"
-                            : "text-foreground/60 hover:text-foreground"
-                        )}
-                      >
-                        <ThemeIcon className="h-3.5 w-3.5" />
-                        <span className="sr-only">{themeOption.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+                <Tabs
+                  value={activeTheme}
+                  onValueChange={(value) =>
+                    setTheme(value as "light" | "dark" | "system" | "red")
+                  }
+                >
+                  <TabsList>
+                    {themeTabs.map((themeOption) => {
+                      const ThemeIcon = themeOption.icon;
+                      return (
+                        <TabsTrigger
+                          key={themeOption.value}
+                          value={themeOption.value}
+                          aria-label={`Set ${themeOption.label.toLowerCase()} theme`}
+                          title={themeOption.label}
+                          disabled={!themeMounted}
+                          className="w-8"
+                        >
+                          <ThemeIcon className="h-3.5 w-3.5" />
+                          <span className="sr-only">{themeOption.label}</span>
+                        </TabsTrigger>
+                      );
+                    })}
+                  </TabsList>
+                </Tabs>
               </div>
             </div>
           </aside>
@@ -219,6 +231,12 @@ export default function PlatformShell() {
           <section className="relative p-4 sm:p-5 md:ml-5 md:min-h-[calc(100vh-2.5rem)] md:pl-7 md:pr-2 md:before:absolute md:before:bottom-0 md:before:left-0 md:before:top-0 md:before:w-px md:before:bg-gradient-to-b md:before:from-border/55 md:before:via-border/40 md:before:to-border/15">
             {activeTab === "home" && (
               <DeveloperHome
+                baseUrl={baseUrl}
+                onBaseUrlChange={handleBaseUrlChange}
+              />
+            )}
+            {activeTab === "playground" && (
+              <PlaygroundPanel
                 baseUrl={baseUrl}
                 onBaseUrlChange={handleBaseUrlChange}
               />

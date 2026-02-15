@@ -5,6 +5,8 @@ import { Loader2 } from "lucide-react";
 import { useAuth } from "@/context/AuthProvider";
 import LoginMethodsCard from "@/components/auth/LoginMethodsCard";
 import PlatformShell from "@/components/platform/PlatformShell";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 
 export default function PlatformPage() {
   const { isAuthenticated, authChecked } = useAuth();
@@ -35,32 +37,35 @@ export default function PlatformPage() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-border/60 bg-muted/15 p-4">
+              <Card className="gap-0 bg-muted/15 py-0 shadow-none">
+                <CardContent className="p-4">
                 <p className="text-sm font-medium">API key control</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Create, import, top up, refund, and sync keys.
                 </p>
-              </div>
-              <div className="rounded-xl border border-border/60 bg-muted/15 p-4">
+                </CardContent>
+              </Card>
+              <Card className="gap-0 bg-muted/15 py-0 shadow-none">
+                <CardContent className="p-4">
                 <p className="text-sm font-medium">NIP-60 wallet tools</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Deposit, pay invoices, send tokens, and track history.
                 </p>
-              </div>
-              <div className="rounded-xl border border-border/60 bg-muted/15 p-4 sm:col-span-2">
+                </CardContent>
+              </Card>
+              <Card className="gap-0 bg-muted/15 py-0 shadow-none sm:col-span-2">
+                <CardContent className="p-4">
                 <p className="text-sm font-medium">Node-aware endpoint routing</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Choose a routable node and generate request snippets instantly.
                 </p>
-              </div>
+                </CardContent>
+              </Card>
             </div>
 
-            <Link
-              href="/login"
-              className="inline-flex items-center rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm hover:bg-muted/55"
-            >
-              Open dedicated login page
-            </Link>
+            <Button asChild variant="secondary" className="w-fit">
+              <Link href="/login">Open dedicated login page</Link>
+            </Button>
           </section>
 
           <div className="rounded-2xl border border-border/60 bg-card/80 p-2">
