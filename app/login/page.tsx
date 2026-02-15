@@ -1,5 +1,14 @@
-import { redirect } from "next/navigation";
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
-  redirect("/?login=1");
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace("/?login=1");
+  }, [router]);
+
+  return null;
 }
