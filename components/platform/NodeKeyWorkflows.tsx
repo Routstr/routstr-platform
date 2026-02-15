@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { format, isValid, parse } from "date-fns";
 import {
   CashuMint,
   CashuWallet,
@@ -8,7 +9,7 @@ import {
   getEncodedTokenV4,
   type Proof as CashuProof,
 } from "@cashu/cashu-ts";
-import { Check, Copy, Loader2, QrCode, RefreshCw, Zap } from "lucide-react";
+import { CalendarDays, Check, Copy, Loader2, QrCode, RefreshCw, Zap } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import {
@@ -23,8 +24,10 @@ import {
   type WalletProof,
 } from "@/lib/nip60WalletSync";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -88,6 +91,7 @@ type NodeKeyWorkflowsProps = {
   activateCreateSignal?: number;
   showLightningSection?: boolean;
   showChildSection?: boolean;
+  hideChildSectionHeader?: boolean;
   minimalLayout?: boolean;
 };
 
@@ -267,6 +271,14 @@ function endOfDayUnix(dateInput: string): number | undefined {
   return Math.floor(asDate.getTime() / 1000);
 }
 
+function parseIsoDateInput(dateInput: string): Date | undefined {
+  const trimmed = dateInput.trim();
+  if (!trimmed) return undefined;
+  const parsed = parse(trimmed, "yyyy-MM-dd", new Date());
+  if (!isValid(parsed)) return undefined;
+  return parsed;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -370,10 +382,12 @@ export default function NodeKeyWorkflows({
   activateCreateSignal,
   showLightningSection,
   showChildSection,
+  hideChildSectionHeader,
   minimalLayout,
 }: NodeKeyWorkflowsProps) {
   const shouldShowLightningSection = showLightningSection ?? true;
   const shouldShowChildSection = showChildSection ?? true;
+  const shouldHideChildSectionHeader = hideChildSectionHeader ?? false;
   const isMinimalLayout = minimalLayout ?? false;
   const normalizedDefaultBaseUrl = normalizeBaseUrl(defaultBaseUrl) || defaultBaseUrl;
 
@@ -820,6 +834,7 @@ export default function NodeKeyWorkflows({
   const [childBalanceLimit, setChildBalanceLimit] = useState("");
   const [childBalanceLimitReset, setChildBalanceLimitReset] = useState("");
   const [childValidityDate, setChildValidityDate] = useState("");
+  const [isChildValidityCalendarOpen, setIsChildValidityCalendarOpen] = useState(false);
   const [isCreatingChildKeys, setIsCreatingChildKeys] = useState(false);
   const [createdChildKeys, setCreatedChildKeys] = useState<string[]>([]);
   const [childCostMsats, setChildCostMsats] = useState<number | null>(null);
@@ -1009,12 +1024,10 @@ export default function NodeKeyWorkflows({
       {
         id: "create",
         label: "Create",
-        description: "Generate one or more child keys from a parent API key.",
       },
       {
         id: "status",
         label: "Check status",
-        description: "Inspect spending, limits, and expiry for a child key.",
       },
     ],
     []
@@ -1056,8 +1069,10 @@ export default function NodeKeyWorkflows({
 
   const lightningModeDescription =
     lightningTabOptions.find((option) => option.id === lightningMode)?.description || "\u00A0";
-  const childModeDescription =
-    childTabOptions.find((option) => option.id === childMode)?.description || "\u00A0";
+  const selectedChildValidityDate = useMemo(
+    () => parseIsoDateInput(childValidityDate),
+    [childValidityDate]
+  );
   const labelClass = "text-xs font-medium text-muted-foreground";
 
   return (
@@ -1354,12 +1369,14 @@ export default function NodeKeyWorkflows({
       {shouldShowChildSection ? (
         <SectionShell isMinimalLayout={isMinimalLayout}>
         <div className="space-y-3">
-          <div className="space-y-1">
-            <h3 className="text-base font-semibold tracking-tight">Child Key Tools</h3>
-            <p className="text-sm text-muted-foreground">
-              Generate child keys from a parent key and inspect child-key limits.
-            </p>
-          </div>
+          {shouldHideChildSectionHeader ? null : (
+            <div className="space-y-1">
+              <h3 className="text-base font-semibold tracking-tight">Child Key Tools</h3>
+              <p className="text-sm text-muted-foreground">
+                Generate child keys from a parent key and inspect child-key limits.
+              </p>
+            </div>
+          )}
           <Tabs
             value={childMode}
             onValueChange={(value) => setChildMode(value as "create" | "status")}
@@ -1373,12 +1390,15 @@ export default function NodeKeyWorkflows({
               ))}
             </TabsList>
           </Tabs>
-          <p className="min-h-10 text-xs leading-relaxed text-muted-foreground">
-            {childModeDescription}
-          </p>
         </div>
 
-        <div className="mt-4 rounded-xl border border-border/60 bg-muted/15 p-4 space-y-4 min-h-0 sm:min-h-[26rem]">
+        <div
+          className={
+            isMinimalLayout
+              ? "mt-4 space-y-4"
+              : "mt-4 rounded-xl border border-border/60 bg-muted/15 p-4 space-y-4 min-h-0 sm:min-h-[26rem]"
+          }
+        >
           {childMode === "create" ? (
             <div
               id="child-workflow-panel-create"
@@ -1459,11 +1479,37 @@ export default function NodeKeyWorkflows({
                 </label>
                 <label className="space-y-1.5">
                   <span className={labelClass}>Validity date</span>
-                  <Input
-                    value={childValidityDate}
-                    onChange={(event) => setChildValidityDate(event.target.value)}
-                    type="date"
-                  />
+                  <Popover
+                    open={isChildValidityCalendarOpen}
+                    onOpenChange={setIsChildValidityCalendarOpen}
+                  >
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={`w-full justify-between text-left font-normal ${
+                          selectedChildValidityDate ? "" : "text-muted-foreground"
+                        }`}
+                      >
+                        {selectedChildValidityDate
+                          ? format(selectedChildValidityDate, "PPP")
+                          : "Pick a date"}
+                        <CalendarDays className="h-4 w-4 opacity-70" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={selectedChildValidityDate}
+                        defaultMonth={selectedChildValidityDate}
+                        onSelect={(date) => {
+                          setChildValidityDate(date ? format(date, "yyyy-MM-dd") : "");
+                          setIsChildValidityCalendarOpen(false);
+                        }}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </label>
               </div>
 

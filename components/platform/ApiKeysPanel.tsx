@@ -37,8 +37,6 @@ import {
   type WalletProof,
 } from "@/lib/nip60WalletSync";
 import { DEFAULT_BASE_URL } from "@/lib/utils";
-import { ModalShell } from "@/components/ui/ModalShell";
-import SettingsDialog from "@/components/ui/SettingsDialog";
 import NodeKeyWorkflows from "@/components/platform/NodeKeyWorkflows";
 import {
   Dialog,
@@ -784,7 +782,6 @@ export default function ApiKeysPanel({
   const [manualApiKey, setManualApiKey] = useState("");
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [showInlineCreateForm, setShowInlineCreateForm] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showTopupDialog, setShowTopupDialog] = useState(false);
@@ -976,16 +973,7 @@ export default function ApiKeysPanel({
   const showSyncSkeleton = isSyncBootstrapping && storedApiKeys.length === 0;
 
   useEffect(() => {
-    if (showSyncSkeleton) return;
-    if (storedApiKeys.length === 0) {
-      setShowInlineCreateForm(true);
-      return;
-    }
-    setShowInlineCreateForm(false);
-  }, [showSyncSkeleton, storedApiKeys.length]);
-
-  useEffect(() => {
-    if (!(showInlineCreateForm || showCreateDialog || showTopupDialog)) return;
+    if (!(showCreateDialog || showTopupDialog)) return;
     let cancelled = false;
 
     const loadActiveMintBalance = async () => {
@@ -1015,7 +1003,7 @@ export default function ApiKeysPanel({
     return () => {
       cancelled = true;
     };
-  }, [showInlineCreateForm, showCreateDialog, showTopupDialog]);
+  }, [showCreateDialog, showTopupDialog]);
 
   const toggleExpanded = (keyId: string) => {
     setExpandedKeys((prev) => {
@@ -1288,7 +1276,6 @@ export default function ApiKeysPanel({
       setCreateApiAmount("");
       setCreateApiLabel("");
       setShowCreateDialog(false);
-      setShowInlineCreateForm(false);
       toast.success("API key created");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create API key");
@@ -1508,11 +1495,7 @@ export default function ApiKeysPanel({
       <div className="flex flex-wrap gap-2">
         <Button
           onClick={() => {
-            if (storedApiKeys.length > 0) {
-              setShowCreateDialog(true);
-              return;
-            }
-            setShowInlineCreateForm(true);
+            setShowCreateDialog(true);
           }}
           variant="outline"
           type="button"
@@ -1537,30 +1520,6 @@ export default function ApiKeysPanel({
         </Button>
       </div>
 
-      {showInlineCreateForm && storedApiKeys.length === 0 && !showSyncSkeleton ? (
-        <Card className="gap-0 space-y-4 p-4">
-          <h3 className="text-base font-semibold text-foreground">Create Your First API Key</h3>
-          {renderCreateKeyFields()}
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setShowInlineCreateForm(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void confirmCreateApiKey()}
-              disabled={isCreatingKey || isSyncBootstrapping}
-            >
-              {isCreatingKey ? "Creating..." : "Create"}
-            </Button>
-          </div>
-        </Card>
-      ) : null}
-
       {showSyncSkeleton ? (
         <div
           className="space-y-3"
@@ -1583,11 +1542,11 @@ export default function ApiKeysPanel({
             </div>
           ))}
         </div>
-      ) : storedApiKeys.length === 0 && !showInlineCreateForm ? (
+      ) : storedApiKeys.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">
           No API keys yet. Start with `Create Key` or import one with `Add Existing Key`.
         </div>
-      ) : storedApiKeys.length === 0 ? null : (
+      ) : (
         <div className="space-y-3">
           {storedApiKeys.map((keyData) => {
             const keyId = getKeyId(keyData);
@@ -1791,228 +1750,246 @@ export default function ApiKeysPanel({
         </div>
       )}
 
-      <SettingsDialog
-        open={showCreateDialog}
-        onOpenChange={setShowCreateDialog}
-        title="Create API Key"
-      >
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-foreground">Create API Key</h3>
-          {renderCreateKeyFields()}
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setShowCreateDialog(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => void confirmCreateApiKey()}
-              disabled={isCreatingKey || isSyncBootstrapping}
-            >
-              {isCreatingKey ? "Creating..." : "Confirm"}
-            </Button>
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create API Key</DialogTitle>
+            <DialogDescription>
+              Spend from wallet balance to create a new API key.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {renderCreateKeyFields()}
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setShowCreateDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void confirmCreateApiKey()}
+                disabled={isCreatingKey || isSyncBootstrapping}
+              >
+                {isCreatingKey ? "Creating..." : "Confirm"}
+              </Button>
+            </div>
           </div>
-        </div>
-      </SettingsDialog>
+        </DialogContent>
+      </Dialog>
 
-      <SettingsDialog
-        open={showAddDialog}
-        onOpenChange={setShowAddDialog}
-        title="Add Existing API Key"
-      >
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-foreground">Add Existing API Key</h3>
-          <Input
-            placeholder="Label (optional)"
-            value={manualApiLabel}
-            onChange={(event) => setManualApiLabel(event.target.value)}
-          />
-          <Input
-            placeholder="API key"
-            value={manualApiKey}
-            onChange={(event) => setManualApiKey(event.target.value)}
-            className="font-mono"
-          />
-          <Select value={selectedAddBaseUrl} onValueChange={setSelectedAddBaseUrl}>
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {availableBaseUrls.map((url) => (
-                <SelectItem key={url} value={url}>
-                  {url}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="flex justify-end gap-2">
-            <Button
-              onClick={() => setShowAddDialog(false)}
-              variant="ghost"
-              type="button"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={() => void addExistingApiKey()}
-              variant="outline"
-              disabled={isAdding || !manualApiKey.trim()}
-              type="button"
-            >
-              {isAdding ? "Adding..." : "Add"}
-            </Button>
+      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Existing API Key</DialogTitle>
+            <DialogDescription>
+              Import an existing key and verify it against the selected endpoint.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Input
+              placeholder="Label (optional)"
+              value={manualApiLabel}
+              onChange={(event) => setManualApiLabel(event.target.value)}
+            />
+            <Input
+              placeholder="API key"
+              value={manualApiKey}
+              onChange={(event) => setManualApiKey(event.target.value)}
+              className="font-mono"
+            />
+            <Select value={selectedAddBaseUrl} onValueChange={setSelectedAddBaseUrl}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {availableBaseUrls.map((url) => (
+                  <SelectItem key={url} value={url}>
+                    {url}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex justify-end gap-2">
+              <Button
+                onClick={() => setShowAddDialog(false)}
+                variant="ghost"
+                type="button"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void addExistingApiKey()}
+                variant="outline"
+                disabled={isAdding || !manualApiKey.trim()}
+                type="button"
+              >
+                {isAdding ? "Adding..." : "Add"}
+              </Button>
+            </div>
           </div>
-        </div>
-      </SettingsDialog>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showChildWorkflowDialog} onOpenChange={setShowChildWorkflowDialog}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader className="sr-only">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
             <DialogTitle>Child Key Tools</DialogTitle>
             <DialogDescription>
               Generate child keys and check their status.
             </DialogDescription>
           </DialogHeader>
-          <NodeKeyWorkflows
-            defaultBaseUrl={normalizedBaseUrl}
-            availableBaseUrls={availableBaseUrls}
-            storedApiKeys={storedApiKeys}
-            onUpsertKey={upsertKeyFromWorkflow}
-            showLightningSection={false}
-            minimalLayout
-          />
+          <div className="pt-1">
+            <NodeKeyWorkflows
+              defaultBaseUrl={normalizedBaseUrl}
+              availableBaseUrls={availableBaseUrls}
+              storedApiKeys={storedApiKeys}
+              onUpsertKey={upsertKeyFromWorkflow}
+              showLightningSection={false}
+              hideChildSectionHeader
+              minimalLayout
+            />
+          </div>
         </DialogContent>
       </Dialog>
 
-      <ModalShell
+      <Dialog
         open={showDeleteDialog && !!keyToDelete}
-        onClose={() => {
-          setShowDeleteDialog(false);
-          setKeyToDelete(null);
+        onOpenChange={(open) => {
+          setShowDeleteDialog(open);
+          if (!open) {
+            setKeyToDelete(null);
+          }
         }}
-        overlayClassName="bg-black/70 z-50 p-4"
-        contentClassName="bg-card border border-border rounded-lg w-full max-w-md p-5 space-y-4"
-        closeOnOverlayClick
       >
-        {keyToDelete && (
-          <>
-            <h3 className="text-lg font-semibold text-foreground">Delete API Key</h3>
-            <p className="text-sm text-muted-foreground">
-              Delete <span className="font-medium">{keyToDelete.label || "Unnamed"}</span>.
-              You can refund first or delete immediately.
-            </p>
-            <div className="flex justify-end gap-2">
-              <Button
-                onClick={() => {
-                  setShowDeleteDialog(false);
-                  setKeyToDelete(null);
-                }}
-                variant="ghost"
-                type="button"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={() => void refundAndDeleteKey()}
-                variant="outline"
-                type="button"
-                disabled={isRefundingKey === getKeyId(keyToDelete)}
-              >
-                {isRefundingKey === getKeyId(keyToDelete)
-                  ? "Refunding..."
-                  : "Refund & Delete"}
-              </Button>
-              <Button
-                onClick={() => void deleteKey()}
-                variant="outline"
-                type="button"
-                disabled={isDeletingKey === getKeyId(keyToDelete)}
-              >
-                {isDeletingKey === getKeyId(keyToDelete)
-                  ? "Deleting..."
-                  : "Delete Only"}
-              </Button>
-            </div>
-          </>
-        )}
-      </ModalShell>
-
-      <ModalShell
-        open={showTopupDialog && !!keyToTopup}
-        onClose={() => {
-          setShowTopupDialog(false);
-          setTopupAmount("");
-          setKeyToTopup(null);
-        }}
-        overlayClassName="bg-black/70 z-50 p-4"
-        contentClassName="bg-card border border-border rounded-lg w-full max-w-md p-5 space-y-4"
-        closeOnOverlayClick
-      >
-        {keyToTopup && (
-          <>
-            <h3 className="text-lg font-semibold text-foreground">Top Up API Key</h3>
-            <p className="text-sm text-muted-foreground">
-              Add balance to <span className="font-medium">{keyToTopup.label || "Unnamed"}</span>{" "}
-              using wallet balance.
-            </p>
-            <div className="rounded-lg border border-border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
-              <div className="font-medium text-foreground/90">{activeMintDisplay}</div>
-              <div className="mt-0.5">
-                Available: {isReadingMintBalance ? "Loading..." : activeMintBalanceDisplay}
+        <DialogContent className="sm:max-w-md">
+          {keyToDelete ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Delete API Key</DialogTitle>
+                <DialogDescription>
+                  Delete <span className="font-medium">{keyToDelete.label || "Unnamed"}</span>.
+                  You can refund first or delete immediately.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex justify-end gap-2">
+                <Button
+                  onClick={() => {
+                    setShowDeleteDialog(false);
+                    setKeyToDelete(null);
+                  }}
+                  variant="ghost"
+                  type="button"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => void refundAndDeleteKey()}
+                  variant="outline"
+                  type="button"
+                  disabled={isRefundingKey === getKeyId(keyToDelete)}
+                >
+                  {isRefundingKey === getKeyId(keyToDelete)
+                    ? "Refunding..."
+                    : "Refund & Delete"}
+                </Button>
+                <Button
+                  onClick={() => void deleteKey()}
+                  variant="outline"
+                  type="button"
+                  disabled={isDeletingKey === getKeyId(keyToDelete)}
+                >
+                  {isDeletingKey === getKeyId(keyToDelete)
+                    ? "Deleting..."
+                    : "Delete Only"}
+                </Button>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Input
-                type="number"
-                inputMode="numeric"
-                min={1}
-                step={1}
-                placeholder="Amount in sats"
-                value={topupAmount}
-                onChange={(event) => setTopupAmount(event.target.value)}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={activeMintBalanceSats === null || activeMintBalanceSats <= 0}
-                onClick={() =>
-                  setTopupAmount(String(Math.max(0, Math.floor(activeMintBalanceSats || 0))))
-                }
-              >
-                Max
-              </Button>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button
-                onClick={() => {
-                  setShowTopupDialog(false);
-                  setTopupAmount("");
-                  setKeyToTopup(null);
-                }}
-                variant="ghost"
-                type="button"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={() => void topupKey()}
-                variant="outline"
-                type="button"
-                disabled={!topupAmount.trim() || isTopupKey === getKeyId(keyToTopup)}
-              >
-                {isTopupKey === getKeyId(keyToTopup)
-                  ? "Topping up..."
-                  : "Confirm Top Up"}
-              </Button>
-            </div>
-          </>
-        )}
-      </ModalShell>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showTopupDialog && !!keyToTopup}
+        onOpenChange={(open) => {
+          setShowTopupDialog(open);
+          if (!open) {
+            setTopupAmount("");
+            setKeyToTopup(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          {keyToTopup ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Top Up API Key</DialogTitle>
+                <DialogDescription>
+                  Add balance to{" "}
+                  <span className="font-medium">{keyToTopup.label || "Unnamed"}</span>{" "}
+                  using wallet balance.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="rounded-lg border border-border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
+                  <div className="font-medium text-foreground/90">{activeMintDisplay}</div>
+                  <div className="mt-0.5">
+                    Available: {isReadingMintBalance ? "Loading..." : activeMintBalanceDisplay}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    step={1}
+                    placeholder="Amount in sats"
+                    value={topupAmount}
+                    onChange={(event) => setTopupAmount(event.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={activeMintBalanceSats === null || activeMintBalanceSats <= 0}
+                    onClick={() =>
+                      setTopupAmount(String(Math.max(0, Math.floor(activeMintBalanceSats || 0))))
+                    }
+                  >
+                    Max
+                  </Button>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    onClick={() => {
+                      setShowTopupDialog(false);
+                      setTopupAmount("");
+                      setKeyToTopup(null);
+                    }}
+                    variant="ghost"
+                    type="button"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => void topupKey()}
+                    variant="outline"
+                    type="button"
+                    disabled={!topupAmount.trim() || isTopupKey === getKeyId(keyToTopup)}
+                  >
+                    {isTopupKey === getKeyId(keyToTopup)
+                      ? "Topping up..."
+                      : "Confirm Top Up"}
+                  </Button>
+                </div>
+              </div>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
