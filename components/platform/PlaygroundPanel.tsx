@@ -263,7 +263,7 @@ function pickPreferredModelId(modelIds: string[]): string {
   );
   if (partialMatch) return partialMatch;
 
-  return modelIds[0] || DEFAULT_MODEL_ID;
+  return modelIds[0] || "";
 }
 
 function buildRequestBody(params: {
@@ -502,7 +502,7 @@ export default function PlaygroundPanel({
   const [selectedSnippetKind, setSelectedSnippetKind] =
     useState<CodeSnippetKind>("curl");
 
-  const [selectedModelId, setSelectedModelId] = useState(DEFAULT_MODEL_ID);
+  const [selectedModelId, setSelectedModelId] = useState("");
   const [selectedApiKeyId, setSelectedApiKeyId] = useState("");
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [temperature, setTemperature] = useState(DEFAULT_TEMPERATURE);
@@ -562,11 +562,9 @@ export default function PlaygroundPanel({
       onBaseUrlChangeRef.current(withTrailingSlash(savedEndpoint));
     }
 
-    setSelectedModelId(
-      typeof saved.selectedModelId === "string" && saved.selectedModelId.trim()
-        ? saved.selectedModelId.trim()
-        : DEFAULT_MODEL_ID
-    );
+    const savedModelId =
+      typeof saved.selectedModelId === "string" ? saved.selectedModelId.trim() : "";
+    setSelectedModelId(savedModelId && savedModelId !== DEFAULT_MODEL_ID ? savedModelId : "");
     setSelectedApiKeyId(
       typeof saved.selectedApiKeyId === "string" ? saved.selectedApiKeyId : ""
     );
@@ -605,7 +603,7 @@ export default function PlaygroundPanel({
 
     const settings: PlaygroundSettings = {
       endpoint: withTrailingSlash(normalizedBaseUrl),
-      selectedModelId: selectedModelId.trim() || DEFAULT_MODEL_ID,
+      selectedModelId: selectedModelId.trim(),
       selectedApiKeyId,
       systemPrompt,
       temperature: clampTemperature(temperature),
