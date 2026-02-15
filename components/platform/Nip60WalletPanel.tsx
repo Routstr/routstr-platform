@@ -10,6 +10,7 @@ import { useAccountManager } from "@/components/providers/ClientProviders";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Tooltip,
   TooltipContent,
@@ -715,7 +716,11 @@ export default function Nip60WalletPanel({
               ))}
             </div>
           ) : (
-            <div className="space-y-2">
+            <RadioGroup
+              value={mintUrl}
+              onValueChange={setMintUrl}
+              className="gap-2"
+            >
               {availableMints.map((mint) => {
                 const isActive = mint === mintUrl;
                 return (
@@ -727,13 +732,9 @@ export default function Nip60WalletPanel({
                         : "border-border/60 bg-muted/25 hover:bg-muted/40"
                     }`}
                   >
-                    <input
-                      type="radio"
+                    <RadioGroupItem
                       id={`wallet-mint-${mint}`}
-                      name="wallet-mint"
                       value={mint}
-                      checked={isActive}
-                      onChange={() => setMintUrl(mint)}
                       className="h-4 w-4 cursor-pointer"
                     />
                     <label
@@ -768,7 +769,7 @@ export default function Nip60WalletPanel({
                   </div>
                 );
               })}
-            </div>
+            </RadioGroup>
           )}
 
           {showAddMintInput ? (

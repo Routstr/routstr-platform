@@ -353,14 +353,13 @@ export default function PlatformShell({
         <div className="grid min-w-0 items-start gap-4 md:h-full md:grid-cols-[11.5rem_minmax(0,1fr)] md:gap-0">
           <aside className="hidden min-w-0 space-y-5 md:sticky md:top-5 md:flex md:h-[calc(100vh-2.5rem)] md:flex-col md:self-start md:pt-5">
             <div className="space-y-2 px-1">
-              <Button
+              <button
                 onClick={() => navigateToTab("home")}
-                variant="ghost"
-                className="h-auto w-full justify-start px-0 text-left text-xl font-semibold hover:bg-transparent"
+                className="w-full rounded-md bg-transparent px-0 text-left text-xl font-semibold text-foreground outline-none"
                 type="button"
               >
                 Routstr Platform
-              </Button>
+              </button>
               <p className="text-[11px] text-muted-foreground/75">
                 Routstr nodes, API keys, playground testing, and wallet operations.
               </p>

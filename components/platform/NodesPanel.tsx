@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -767,7 +768,7 @@ export default function NodesPanel({
             />
           </div>
 
-          <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-auto overscroll-y-contain">
+          <div className="mt-3 min-h-0 flex-1 overflow-auto overscroll-y-contain">
             {isDirectoryLoading || isSummariesLoading ? (
               <div className="space-y-2" aria-hidden="true">
                 {[0, 1, 2, 3].map((index) => (
@@ -780,33 +781,48 @@ export default function NodesPanel({
             ) : filteredSummaries.length === 0 ? (
               <p className="px-1 text-sm text-muted-foreground">No nodes found.</p>
             ) : (
-              filteredSummaries.map((summary) => {
-                const isActive = summary.endpoint === selectedEndpoint;
-                const displayName =
-                  summary.info?.name || summary.provider?.name || hostFromBaseUrl(summary.endpoint);
-                const version = summary.info?.version?.trim();
-                return (
-                  <button
-                    key={summary.endpoint}
-                    onClick={() => setSelectedEndpoint(summary.endpoint)}
-                    className={`w-full rounded-md border p-2.5 text-left transition-colors ${
-                      isActive
-                        ? "border-border/85 bg-muted/45"
-                        : "border-border/70 bg-muted/15 hover:bg-muted/25"
-                    }`}
-                    type="button"
-                  >
-                    <p className="truncate text-sm font-medium">{displayName}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {hostFromBaseUrl(summary.endpoint)}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {version ? `v${version} • ` : ""}
-                      {summary.availableModelCount} models
-                    </p>
-                  </button>
-                );
-              })
+              <RadioGroup
+                value={selectedEndpoint}
+                onValueChange={setSelectedEndpoint}
+                className="gap-2"
+              >
+                {filteredSummaries.map((summary, index) => {
+                  const isActive = summary.endpoint === selectedEndpoint;
+                  const displayName =
+                    summary.info?.name ||
+                    summary.provider?.name ||
+                    hostFromBaseUrl(summary.endpoint);
+                  const version = summary.info?.version?.trim();
+                  const optionId = `node-endpoint-${index}`;
+                  return (
+                    <label
+                      key={summary.endpoint}
+                      htmlFor={optionId}
+                      className={`flex w-full cursor-pointer items-start gap-2 rounded-md border p-2.5 transition-colors ${
+                        isActive
+                          ? "border-border/85 bg-muted/45"
+                          : "border-border/70 bg-muted/15 hover:bg-muted/25"
+                      }`}
+                    >
+                      <RadioGroupItem
+                        id={optionId}
+                        value={summary.endpoint}
+                        className="mt-0.5 shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{displayName}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {hostFromBaseUrl(summary.endpoint)}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {version ? `v${version} • ` : ""}
+                          {summary.availableModelCount} models
+                        </p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </RadioGroup>
             )}
           </div>
         </Card>
@@ -961,14 +977,16 @@ export default function NodesPanel({
           if (!open) setSelectedModelDetail(null);
         }}
       >
-        <DialogContent className="max-w-3xl p-4 sm:p-5">
-          <DialogHeader className="pr-8">
-            <DialogTitle className="flex items-center gap-2">
-              <span className="min-w-0 truncate text-base font-semibold">{selectedModelName}</span>
+        <DialogContent className="max-h-[95svh] p-4 sm:max-w-3xl sm:p-5">
+          <DialogHeader className="pr-8 text-left">
+            <DialogTitle className="flex flex-wrap items-center gap-1.5 pr-2 text-left">
+              <span className="min-w-0 flex-1 truncate text-base font-semibold">
+                {selectedModelName}
+              </span>
               {selectedModelId ? (
                 <>
                   <span className="text-muted-foreground text-xs">•</span>
-                  <span className="min-w-0 truncate text-xs text-muted-foreground">
+                  <span className="min-w-0 max-w-full truncate text-xs text-muted-foreground">
                     {selectedModelId}
                   </span>
                   <Button
@@ -991,7 +1009,7 @@ export default function NodesPanel({
           </DialogHeader>
 
           {selectedModelDetail ? (
-            <div className="max-h-[70vh] space-y-3 overflow-auto pr-1">
+            <div className="max-h-[calc(100svh-11.5rem)] space-y-3 overflow-auto pr-1 sm:max-h-[70vh]">
               <div className="grid gap-2 sm:grid-cols-2">
                 <div className="rounded-md border border-border/70 bg-muted/15 px-2.5 py-2">
                   <p className="text-[11px] text-muted-foreground">Node</p>
