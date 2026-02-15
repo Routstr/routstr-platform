@@ -628,6 +628,13 @@ export default function DeveloperHome({
       primaryEndpointKey.balance > 0 &&
       !primaryEndpointKey.isInvalid
   );
+  const primaryEndpointKeyPreview = useMemo(() => {
+    if (!primaryEndpointKey) return "No key";
+    const raw = primaryEndpointKey.key.trim();
+    if (!raw) return "No key";
+    if (raw.length <= 18) return raw;
+    return `${raw.slice(0, 8)}...${raw.slice(-4)}`;
+  }, [primaryEndpointKey]);
 
   const totalKeyBalanceMsats = useMemo(() => {
     return storedApiKeys.reduce((sum, keyData) => {
@@ -838,7 +845,7 @@ export default function DeveloperHome({
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.12),transparent_48%),radial-gradient(circle_at_bottom_left,rgba(16,185,129,0.10),transparent_44%)]" />
         <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-2 max-w-3xl">
-            <h1 className="text-3xl font-semibold tracking-tight">Developer Home</h1>
+            <h2 className="text-xl font-semibold tracking-tight">Setup Status</h2>
             <p className="text-sm text-muted-foreground">{heroSummary}</p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1064,12 +1071,19 @@ export default function DeveloperHome({
               </Select>
             </label>
 
-            <div className="rounded-md border border-border bg-muted/20 p-3">
-              <p className="text-xs text-muted-foreground">Key used for test</p>
-              <p className="mt-1 text-sm font-mono break-all">
-                {primaryEndpointKey ? `${primaryEndpointKey.key.slice(0, 8)}...` : "No key"}
-              </p>
-            </div>
+            <label className="space-y-1">
+              <span className="text-xs text-muted-foreground">Key used for test</span>
+              <div className="border-input flex h-8 min-w-0 items-center rounded-lg border bg-transparent px-2.5 py-2">
+                <p
+                  className={`w-full truncate font-mono text-sm leading-none ${
+                    primaryEndpointKey ? "text-foreground/90" : "text-muted-foreground"
+                  }`}
+                  title={primaryEndpointKey?.key || "No key"}
+                >
+                  {primaryEndpointKeyPreview}
+                </p>
+              </div>
+            </label>
             </div>
 
             <div className="bg-muted/30 rounded-lg p-4 font-mono text-sm leading-6 border border-border/50">

@@ -618,6 +618,7 @@ export default function ApiKeysPanel({
   const totalBalanceSats = useMemo(() => {
     return storedApiKeys.reduce((sum, key) => sum + (key.balance || 0) / 1000, 0);
   }, [storedApiKeys]);
+  const showSyncSkeleton = isSyncBootstrapping && storedApiKeys.length === 0;
 
   const toggleExpanded = (keyId: string) => {
     setExpandedKeys((prev) => {
@@ -902,20 +903,17 @@ export default function ApiKeysPanel({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-semibold text-foreground">API Keys</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          Create and manage keys per node.
-        </p>
-      </div>
-
       <Card className="gap-0 space-y-4 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="text-sm text-muted-foreground">Total key balance</div>
-            <div className="text-lg font-semibold text-foreground">
-              {totalBalanceSats.toFixed(2)} sats
-            </div>
+            {showSyncSkeleton ? (
+              <div className="mt-1 h-6 w-28 rounded bg-muted/70 animate-pulse" />
+            ) : (
+              <div className="text-lg font-semibold text-foreground">
+                {totalBalanceSats.toFixed(2)} sats
+              </div>
+            )}
           </div>
           <Button
             onClick={refreshAllKeys}
@@ -926,7 +924,7 @@ export default function ApiKeysPanel({
             <RefreshCw
               className={`h-4 w-4 ${isRefreshingAll ? "animate-spin" : ""}`}
             />
-            Refresh
+            {isSyncBootstrapping ? "Syncing..." : "Refresh"}
           </Button>
         </div>
 
@@ -961,7 +959,29 @@ export default function ApiKeysPanel({
         </Button>
       </div>
 
-      {storedApiKeys.length === 0 ? (
+      {showSyncSkeleton ? (
+        <div
+          className="space-y-3"
+          role="status"
+          aria-live="polite"
+          aria-label="Loading API keys"
+        >
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div
+              key={`api-key-skeleton-${index}`}
+              className="rounded-md border border-border bg-muted/50 p-3 animate-pulse"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-2 flex-1 min-w-0">
+                  <div className="h-4 w-40 rounded bg-muted/80" />
+                  <div className="h-3 w-24 rounded bg-muted/80" />
+                </div>
+                <div className="h-4 w-20 rounded bg-muted/80 shrink-0" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : storedApiKeys.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">
           No API keys yet. Start with `Create Key` or import one with `Add Existing Key`.
         </div>
@@ -1231,6 +1251,7 @@ export default function ApiKeysPanel({
             availableBaseUrls={availableBaseUrls}
             storedApiKeys={storedApiKeys}
             onUpsertKey={upsertKeyFromWorkflow}
+            onCreateSuccess={() => setShowLightningWorkflowDialog(false)}
             activateCreateSignal={activateCreateWorkflowSignal}
             showChildSection={false}
             minimalLayout

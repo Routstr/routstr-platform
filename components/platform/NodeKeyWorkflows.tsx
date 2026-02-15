@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   CashuMint,
   CashuWallet,
+  CheckStateEnum,
   getEncodedTokenV4,
   type Proof as CashuProof,
 } from "@cashu/cashu-ts";
@@ -83,6 +84,7 @@ type NodeKeyWorkflowsProps = {
   availableBaseUrls: string[];
   storedApiKeys: StoredApiKeyLike[];
   onUpsertKey: (baseUrl: string, apiKey: string, label: string) => Promise<void>;
+  onCreateSuccess?: () => void;
   activateCreateSignal?: number;
   showLightningSection?: boolean;
   showChildSection?: boolean;
@@ -144,6 +146,38 @@ function proofIdentity(proof: WalletProof): string {
 
 function sumProofsBalanceSats(proofs: WalletProof[]): number {
   return proofs.reduce((sum, proof) => sum + Number(proof.amount || 0), 0);
+}
+
+async function removeSpentProofsForMint(
+  wallet: CashuWallet,
+  proofsForMint: WalletProof[]
+): Promise<WalletProof[]> {
+  const proofStates = await wallet.checkProofsStates(proofsForMint as CashuProof[]);
+  if (!Array.isArray(proofStates) || proofStates.length === 0) {
+    return proofsForMint;
+  }
+
+  const spentProofIds = new Set<string>();
+  const remainingProofs: WalletProof[] = [];
+  proofsForMint.forEach((proof, index) => {
+    const state = proofStates[index]?.state;
+    if (state === CheckStateEnum.SPENT) {
+      spentProofIds.add(proofIdentity(proof));
+      return;
+    }
+    remainingProofs.push(proof);
+  });
+
+  if (spentProofIds.size === 0) {
+    return proofsForMint;
+  }
+
+  const currentProofs = readCashuProofs() as WalletProof[];
+  const nextProofs = currentProofs.filter(
+    (proof) => !spentProofIds.has(proofIdentity(proof))
+  );
+  writeCashuProofs(nextProofs);
+  return remainingProofs;
 }
 
 function encodeCashuTokenV4(
@@ -332,6 +366,7 @@ export default function NodeKeyWorkflows({
   availableBaseUrls,
   storedApiKeys,
   onUpsertKey,
+  onCreateSuccess,
   activateCreateSignal,
   showLightningSection,
   showChildSection,
@@ -522,13 +557,13 @@ export default function NodeKeyWorkflows({
       nodeMints: string[],
       preferredMint: string
     ): Promise<{ token: string }> => {
-      const proofsBefore = readCashuProofs() as WalletProof[];
-      if (!Array.isArray(proofsBefore) || proofsBefore.length === 0) {
+      const initialProofs = readCashuProofs() as WalletProof[];
+      if (!Array.isArray(initialProofs) || initialProofs.length === 0) {
         throw new Error("No wallet balance available");
       }
 
       const walletMintBalances = new Map<string, number>();
-      for (const proof of proofsBefore) {
+      for (const proof of initialProofs) {
         const mint = normalizeMintUrl(proof.mintUrl || "");
         if (!mint) continue;
         walletMintBalances.set(
@@ -575,7 +610,8 @@ export default function NodeKeyWorkflows({
       for (const mint of candidates) {
         try {
           const { wallet, unit, preferredKeysetId } = await createWalletForMint(mint);
-          const proofsForMint = getProofsForMint(proofsBefore, mint);
+          let proofsSnapshot = readCashuProofs() as WalletProof[];
+          let proofsForMint = getProofsForMint(proofsSnapshot, mint);
           if (!Array.isArray(proofsForMint) || proofsForMint.length === 0) {
             continue;
           }
@@ -604,6 +640,16 @@ export default function NodeKeyWorkflows({
               firstMessage.includes("Token already spent") ||
               firstMessage.includes("Not enough balance to send")
             ) {
+              proofsForMint = await removeSpentProofsForMint(wallet, proofsForMint);
+              if (proofsForMint.length === 0) {
+                throw new Error("Token already spent. Please sync wallet and retry.");
+              }
+              proofsSnapshot = readCashuProofs() as WalletProof[];
+              if (sumProofsBalanceSats(proofsForMint) < amountInMintUnit) {
+                throw new Error(
+                  "Not enough funds on this mint after removing spent proofs"
+                );
+              }
               sendResult = await wallet.send(amountInMintUnit, proofsForMint as CashuProof[], {
                 ...sendOptions,
               });
@@ -619,7 +665,7 @@ export default function NodeKeyWorkflows({
           }
 
           const mintedProofIds = new Set(proofsForMint.map((proof) => proofIdentity(proof)));
-          const untouched = proofsBefore.filter(
+          const untouched = proofsSnapshot.filter(
             (proof) => !mintedProofIds.has(proofIdentity(proof))
           );
           const keepWithMetadata = annotateProofsWithMint(keepProofs, mint);
@@ -682,12 +728,13 @@ export default function NodeKeyWorkflows({
       setCreateAmount("");
       setCreateLabel("");
       toast.success("API key created from wallet balance");
+      onCreateSuccess?.();
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to create API key from balance"));
     } finally {
       setIsCreatingFromBalance(false);
     }
-  }, [createAmount, createBaseUrl, createLabel, onUpsertKey]);
+  }, [createAmount, createBaseUrl, createLabel, onCreateSuccess, onUpsertKey]);
 
   const handleTopupInvoice = useCallback(async () => {
     const amount = Number.parseInt(topupAmount, 10);

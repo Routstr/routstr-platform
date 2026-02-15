@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useObservableState } from "applesauce-react/hooks";
 import WalletTab from "@/components/wallet/WalletTab";
-import { ModalShell } from "@/components/ui/ModalShell";
 import { useAccountManager } from "@/components/providers/ClientProviders";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -137,7 +136,7 @@ export default function Nip60WalletPanel({
   const [walletPrivkey, setWalletPrivkey] = useState<string | null>(null);
   const [customMintUrl, setCustomMintUrl] = useState("");
   const [showAddMintInput, setShowAddMintInput] = useState(false);
-  const [showDeleteMintDialog, setShowDeleteMintDialog] = useState(false);
+  const [showRemoveMintMode, setShowRemoveMintMode] = useState(false);
   const [isLoadingMints, setIsLoadingMints] = useState(true);
   const [isSavingMints, setIsSavingMints] = useState(false);
   const [isSyncingNip60, setIsSyncingNip60] = useState(false);
@@ -350,8 +349,8 @@ export default function Nip60WalletPanel({
   }, [availableMints, customMintUrl, persistWalletMints]);
 
   const handleRemoveMint = useCallback(
-    async (mintToRemove: string): Promise<boolean> => {
-      if (availableMints.length <= 1) return false;
+    async (mintToRemove: string): Promise<void> => {
+      if (availableMints.length <= 1) return;
 
       setIsSavingMints(true);
       setWalletSyncError(null);
@@ -363,12 +362,10 @@ export default function Nip60WalletPanel({
           if (previous !== mintToRemove) return previous;
           return nextMints[0] || NORMALIZED_FALLBACK_MINT;
         });
-        return true;
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Failed to remove mint";
         setWalletSyncError(message);
-        return false;
       } finally {
         setIsSavingMints(false);
       }
@@ -409,12 +406,8 @@ export default function Nip60WalletPanel({
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold text-foreground">Wallet</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Synced from NIP-60 token and wallet events for your active account.
-        </p>
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
           <Button
             onClick={() => {
               if (!syncAccount || isSyncingNip60) return;
@@ -435,180 +428,165 @@ export default function Nip60WalletPanel({
           ) : null}
         </div>
         {walletSyncError ? (
-          <p className="mt-2 text-xs text-foreground/80">{walletSyncError}</p>
+          <p className="text-xs text-foreground/80">{walletSyncError}</p>
         ) : null}
       </div>
 
       <Card className="gap-0 bg-muted/20 p-4 py-4 shadow-none">
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <h3 className="text-sm font-medium text-foreground/85">Mints</h3>
-          <div className="ml-auto flex items-center gap-1.5">
-            <Button
-              onClick={() => setShowAddMintInput((previous) => !previous)}
-              disabled={!syncAccount || isSavingMints || isLoadingMints}
-              variant="outline"
-              size="icon-sm"
-              aria-label="Add mint"
-              type="button"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-            <Button
-              onClick={() => {
-                setShowDeleteMintDialog(true);
-              }}
-              disabled={
-                !syncAccount ||
-                isSavingMints ||
-                isLoadingMints ||
-                availableMints.length <= 1 ||
-                !availableMints.includes(mintUrl)
-              }
-              variant="outline"
-              size="icon-sm"
-              aria-label="Delete selected mint"
-              title={
-                availableMints.length <= 1
-                  ? "Cannot remove the last mint"
-                  : `Delete selected mint: ${cleanMintUrl(mintUrl)}`
-              }
-              type="button"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-muted-foreground">Available balance</span>
+          <span className="text-lg font-semibold text-foreground">
+            {walletBalance.toLocaleString()} sats
+          </span>
         </div>
 
-        {isLoadingMints ? (
-          <div className="space-y-2">
-            {[0, 1, 2].map((index) => (
-              <div
-                key={`mint-skeleton-${index}`}
-                className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/25 px-2.5 py-2"
-                aria-hidden="true"
-              >
-                <span className="h-4 w-4 animate-pulse rounded-full bg-muted" />
-                <span className="h-4 flex-1 animate-pulse rounded bg-muted" />
-                <span className="h-4 w-16 animate-pulse rounded bg-muted" />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {availableMints.map((mint) => {
-              const isActive = mint === mintUrl;
-              return (
-                <div
-                  key={mint}
-                  className={`flex items-center gap-2 rounded-md border px-2.5 py-2 ${
-                    isActive
-                      ? "border-border bg-muted/60"
-                      : "border-border/60 bg-muted/25 hover:bg-muted/40"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    id={`wallet-mint-${mint}`}
-                    name="wallet-mint"
-                    value={mint}
-                    checked={isActive}
-                    onChange={() => setMintUrl(mint)}
-                    className="h-4 w-4 cursor-pointer"
-                  />
-                  <label
-                    htmlFor={`wallet-mint-${mint}`}
-                    className="min-w-0 flex-1 cursor-pointer truncate text-sm text-foreground/90"
-                    title={mint}
-                  >
-                    {cleanMintUrl(mint)}
-                  </label>
-                  <span className="text-xs font-medium text-muted-foreground">
-                    {(mintBalances[mint] || 0).toLocaleString()} sats
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {showAddMintInput ? (
-          <div className="mt-3 border-t border-border pt-3">
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Input
-                type="text"
-                value={customMintUrl}
-                onChange={(event) => setCustomMintUrl(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    void handleAddMint();
-                  }
-                }}
-                className="flex-1"
-                placeholder="https://mint.example.com"
-              />
+        <div className="mt-4 border-t border-border pt-4">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-medium text-foreground/85">Mints</h3>
+            <div className="ml-auto flex items-center gap-1.5">
               <Button
-                onClick={() => {
-                  void handleAddMint();
-                }}
-                disabled={!customMintUrl.trim() || isSavingMints || isLoadingMints}
-                variant="secondary"
+                onClick={() => setShowAddMintInput((previous) => !previous)}
+                disabled={!syncAccount || isSavingMints || isLoadingMints}
+                variant="outline"
+                size="icon-sm"
+                aria-label="Add mint"
                 type="button"
               >
-                {isSavingMints ? "Saving..." : "Add mint"}
+                <Plus className="h-4 w-4" />
+              </Button>
+              <Button
+                onClick={() => setShowRemoveMintMode((previous) => !previous)}
+                disabled={
+                  !syncAccount ||
+                  isSavingMints ||
+                  isLoadingMints ||
+                  availableMints.length <= 1
+                }
+                variant={showRemoveMintMode ? "secondary" : "outline"}
+                size="icon-sm"
+                aria-label="Toggle remove mint mode"
+                title={
+                  availableMints.length <= 1
+                    ? "Cannot remove the last mint"
+                    : showRemoveMintMode
+                      ? "Exit remove mode"
+                      : "Remove mints"
+                }
+                type="button"
+              >
+                <Trash2 className="h-4 w-4" />
               </Button>
             </div>
           </div>
-        ) : null}
 
-        {!syncAccount ? (
-          <p className="mt-2 text-xs text-muted-foreground">
-            Mint editing is available after signer login.
-          </p>
-        ) : null}
-      </Card>
+          {isLoadingMints ? (
+            <div className="space-y-2">
+              {[0, 1, 2].map((index) => (
+                <div
+                  key={`mint-skeleton-${index}`}
+                  className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/25 px-2.5 py-2"
+                  aria-hidden="true"
+                >
+                  <span className="h-4 w-4 animate-pulse rounded-full bg-muted" />
+                  <span className="h-4 flex-1 animate-pulse rounded bg-muted" />
+                  <span className="h-4 w-16 animate-pulse rounded bg-muted" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {availableMints.map((mint) => {
+                const isActive = mint === mintUrl;
+                return (
+                  <div
+                    key={mint}
+                    className={`flex items-center gap-2 rounded-md border px-2.5 py-2 ${
+                      isActive
+                        ? "border-border bg-muted/60"
+                        : "border-border/60 bg-muted/25 hover:bg-muted/40"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      id={`wallet-mint-${mint}`}
+                      name="wallet-mint"
+                      value={mint}
+                      checked={isActive}
+                      onChange={() => setMintUrl(mint)}
+                      className="h-4 w-4 cursor-pointer"
+                    />
+                    <label
+                      htmlFor={`wallet-mint-${mint}`}
+                      className="min-w-0 flex-1 cursor-pointer truncate text-sm text-foreground/90"
+                      title={mint}
+                    >
+                      {cleanMintUrl(mint)}
+                    </label>
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {(mintBalances[mint] || 0).toLocaleString()} sats
+                    </span>
+                    {showRemoveMintMode ? (
+                      <Button
+                        onClick={() => {
+                          void handleRemoveMint(mint);
+                        }}
+                        disabled={isSavingMints || availableMints.length <= 1}
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label={`Delete ${cleanMintUrl(mint)}`}
+                        title={
+                          availableMints.length <= 1
+                            ? "Cannot remove the last mint"
+                            : `Remove ${cleanMintUrl(mint)}`
+                        }
+                        type="button"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
-      <ModalShell
-        open={showDeleteMintDialog}
-        onClose={() => {
-          if (isSavingMints) return;
-          setShowDeleteMintDialog(false);
-        }}
-        overlayClassName="bg-black/70 z-50 p-4"
-        contentClassName="bg-card border border-border rounded-lg w-full max-w-md p-5 space-y-4"
-        closeOnOverlayClick
-      >
-        <h3 className="text-lg font-semibold text-foreground">Delete mint</h3>
-        <p className="text-sm text-muted-foreground">
-          Delete <span className="font-medium text-foreground">{cleanMintUrl(mintUrl)}</span> from
-          your wallet mint list?
-        </p>
-        <div className="flex justify-end gap-2">
-          <Button
-            onClick={() => setShowDeleteMintDialog(false)}
-            variant="ghost"
-            disabled={isSavingMints}
-            type="button"
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={() => {
-              void (async () => {
-                const didDelete = await handleRemoveMint(mintUrl);
-                if (didDelete) {
-                  setShowDeleteMintDialog(false);
-                }
-              })();
-            }}
-            variant="secondary"
-            disabled={isSavingMints || availableMints.length <= 1}
-            type="button"
-          >
-            {isSavingMints ? "Deleting..." : "Delete"}
-          </Button>
+          {showAddMintInput ? (
+            <div className="mt-3 border-t border-border pt-3">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  type="text"
+                  value={customMintUrl}
+                  onChange={(event) => setCustomMintUrl(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void handleAddMint();
+                    }
+                  }}
+                  className="flex-1"
+                  placeholder="https://mint.example.com"
+                />
+                <Button
+                  onClick={() => {
+                    void handleAddMint();
+                  }}
+                  disabled={!customMintUrl.trim() || isSavingMints || isLoadingMints}
+                  variant="secondary"
+                  type="button"
+                >
+                  {isSavingMints ? "Saving..." : "Add mint"}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          {!syncAccount ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Mint editing is available after signer login.
+            </p>
+          ) : null}
         </div>
-      </ModalShell>
+      </Card>
 
       <WalletTab
         balance={walletBalance}

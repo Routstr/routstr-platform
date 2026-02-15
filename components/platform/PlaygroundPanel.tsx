@@ -5,23 +5,35 @@ import { useObservableState } from "applesauce-react/hooks";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowUp,
-  CheckCircle2,
+  Code2,
   Copy,
   Loader2,
   MessageCircle,
   RotateCcw,
   Settings2,
 } from "lucide-react";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 import { useAccountManager } from "@/components/providers/ClientProviders";
 import { DEFAULT_BASE_URL } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import SettingsDialog from "@/components/ui/SettingsDialog";
 import SearchableSelect, {
   SearchableSelectOption,
 } from "@/components/ui/searchable-select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 
 type DirectoryProvider = {
@@ -40,6 +52,7 @@ type NodeModel = {
 type StoredApiKey = {
   key: string;
   balance: number | null;
+  label?: string;
   baseUrl?: string;
   isInvalid?: boolean;
 };
@@ -47,6 +60,7 @@ type StoredApiKey = {
 type PlaygroundSettings = {
   endpoint: string;
   selectedModelId: string;
+  selectedApiKeyId: string;
   systemPrompt: string;
   temperature: number;
   maxTokens: number;
@@ -71,10 +85,13 @@ type RunState = {
   completedAt: number | null;
 };
 
+type CodeSnippetKind = "curl" | "javascript" | "python";
+type CodeSnippetLanguage = "bash" | "javascript" | "python";
+
 const PLAYGROUND_SETTINGS_STORAGE_KEY_PREFIX = "platform_playground_settings_v1:";
 const DEFAULT_MODEL_ID = "gpt-5.2";
 const DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant.";
-const DEFAULT_TEMPERATURE = 0.7;
+const DEFAULT_TEMPERATURE = 0.5;
 const DEFAULT_MAX_TOKENS = 512;
 
 function navigateToApiKeysTab(): void {
@@ -167,6 +184,7 @@ function parseStoredApiKeys(raw: string | null): StoredApiKey[] {
           typeof item.balance === "number" && Number.isFinite(item.balance)
             ? item.balance
             : null,
+        label: typeof item.label === "string" ? item.label : undefined,
         baseUrl: typeof item.baseUrl === "string" ? item.baseUrl : undefined,
         isInvalid: Boolean(item.isInvalid),
       }));
@@ -335,13 +353,91 @@ function extractAssistantText(payload: unknown): string {
   return "";
 }
 
+function extractAssistantDelta(payload: unknown): string {
+  if (!payload || typeof payload !== "object") return "";
+  const candidate = payload as {
+    choices?: Array<{
+      delta?: { content?: unknown };
+      message?: { content?: unknown };
+      text?: unknown;
+    }>;
+  };
+
+  const firstChoice = Array.isArray(candidate.choices) ? candidate.choices[0] : null;
+  if (!firstChoice) return "";
+
+  const deltaContent = firstChoice.delta?.content;
+  if (typeof deltaContent === "string") {
+    return deltaContent;
+  }
+
+  if (Array.isArray(deltaContent)) {
+    return deltaContent
+      .map((part) =>
+        part && typeof part === "object" && "text" in part
+          ? typeof part.text === "string"
+            ? part.text
+            : ""
+          : ""
+      )
+      .filter(Boolean)
+      .join("");
+  }
+
+  if (typeof firstChoice.text === "string") {
+    return firstChoice.text;
+  }
+
+  if (typeof firstChoice.message?.content === "string") {
+    return firstChoice.message.content;
+  }
+
+  return "";
+}
+
 function buildCurlSnippet(url: string, body: unknown): string {
-  const payload = JSON.stringify(body, null, 2).replace(/'/g, `'\"'\"'`);
+  const payload = JSON.stringify(body, null, 2);
   return [
     `curl -X POST "${url}/v1/chat/completions" \\`,
     '  -H "Authorization: Bearer YOUR_API_KEY" \\',
     '  -H "Content-Type: application/json" \\',
-    `  -d '${payload}'`,
+    "  --data @- <<'JSON'",
+    payload,
+    "JSON",
+  ].join("\n");
+}
+
+function buildJavascriptSnippet(url: string, body: unknown): string {
+  const payload = JSON.stringify(body, null, 2);
+  return [
+    'import OpenAI from "openai";',
+    "",
+    "const client = new OpenAI({",
+    '  apiKey: process.env.ROUTSTR_API_KEY || "YOUR_API_KEY",',
+    `  baseURL: "${url}/v1",`,
+    "});",
+    "",
+    `const payload = ${payload};`,
+    "",
+    "const completion = await client.chat.completions.create(payload);",
+    "console.log(completion.choices?.[0]?.message?.content || completion);",
+  ].join("\n");
+}
+
+function buildPythonSnippet(url: string, body: unknown): string {
+  const payload = JSON.stringify(body, null, 2).replace(/'/g, "\\'");
+  return [
+    "from openai import OpenAI",
+    "",
+    "client = OpenAI(",
+    '    api_key="YOUR_API_KEY",',
+    `    base_url="${url}/v1",`,
+    ")",
+    "",
+    `payload = ${payload}`,
+    "",
+    "completion = client.chat.completions.create(**payload)",
+    "print(completion.choices[0].message.content if completion.choices else completion)",
   ].join("\n");
 }
 
@@ -403,8 +499,12 @@ export default function PlaygroundPanel({
   const [storedApiKeys, setStoredApiKeys] = useState<StoredApiKey[]>([]);
   const [hydratedSettingsKey, setHydratedSettingsKey] = useState<string | null>(null);
   const [showRequestSettingsDialog, setShowRequestSettingsDialog] = useState(false);
+  const [showCodeSnippetsDialog, setShowCodeSnippetsDialog] = useState(false);
+  const [selectedSnippetKind, setSelectedSnippetKind] =
+    useState<CodeSnippetKind>("curl");
 
   const [selectedModelId, setSelectedModelId] = useState(DEFAULT_MODEL_ID);
+  const [selectedApiKeyId, setSelectedApiKeyId] = useState("");
   const [systemPrompt, setSystemPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
   const [temperature, setTemperature] = useState(DEFAULT_TEMPERATURE);
   const [maxTokens, setMaxTokens] = useState(DEFAULT_MAX_TOKENS);
@@ -468,6 +568,9 @@ export default function PlaygroundPanel({
         ? saved.selectedModelId.trim()
         : DEFAULT_MODEL_ID
     );
+    setSelectedApiKeyId(
+      typeof saved.selectedApiKeyId === "string" ? saved.selectedApiKeyId : ""
+    );
     setSystemPrompt(
       typeof saved.systemPrompt === "string"
         ? saved.systemPrompt
@@ -504,6 +607,7 @@ export default function PlaygroundPanel({
     const settings: PlaygroundSettings = {
       endpoint: withTrailingSlash(normalizedBaseUrl),
       selectedModelId: selectedModelId.trim() || DEFAULT_MODEL_ID,
+      selectedApiKeyId,
       systemPrompt,
       temperature: clampTemperature(temperature),
       maxTokens: clampMaxTokens(maxTokens),
@@ -513,6 +617,7 @@ export default function PlaygroundPanel({
     maxTokens,
     hydratedSettingsKey,
     normalizedBaseUrl,
+    selectedApiKeyId,
     selectedModelId,
     settingsStorageKey,
     systemPrompt,
@@ -549,11 +654,7 @@ export default function PlaygroundPanel({
     [discoveredEndpoints]
   );
 
-  const {
-    data: models,
-    isLoading: isModelsLoading,
-    isFetching: isModelsFetching,
-  } = useQuery({
+  const { data: models } = useQuery({
     queryKey: ["playground-models", normalizedBaseUrl],
     queryFn: () => fetchNodeModels(normalizedBaseUrl),
     staleTime: 120_000,
@@ -622,17 +723,54 @@ export default function PlaygroundPanel({
     });
   }, [normalizedBaseUrl, storedApiKeys]);
 
-  const primaryEndpointKey = useMemo(() => {
+  const selectedEndpointKey = useMemo(() => {
+    if (!endpointScopedKeys.length) return null;
+    if (selectedApiKeyId) {
+      const selected = endpointScopedKeys.find((keyData) => keyData.key === selectedApiKeyId);
+      if (selected) return selected;
+    }
     return (
       endpointScopedKeys.find((keyData) => !keyData.isInvalid) ||
       endpointScopedKeys[0] ||
       null
     );
+  }, [endpointScopedKeys, selectedApiKeyId]);
+
+  const endpointKeyOptions = useMemo<SearchableSelectOption[]>(() => {
+    return endpointScopedKeys.map((keyData) => {
+      const label = keyData.label?.trim();
+      const keyText =
+        keyData.key.length > 16
+          ? `${keyData.key.slice(0, 8)}...${keyData.key.slice(-6)}`
+          : keyData.key;
+      const invalidSuffix = keyData.isInvalid ? " (invalid)" : "";
+      return {
+        value: keyData.key,
+        label: label ? `${label} • ${keyText}${invalidSuffix}` : `${keyText}${invalidSuffix}`,
+        keywords: [keyData.key, keyText, label || "", keyData.baseUrl || ""],
+      };
+    });
   }, [endpointScopedKeys]);
 
+  useEffect(() => {
+    if (!endpointScopedKeys.length) {
+      if (selectedApiKeyId) {
+        setSelectedApiKeyId("");
+      }
+      return;
+    }
+    if (endpointScopedKeys.some((keyData) => keyData.key === selectedApiKeyId)) {
+      return;
+    }
+    const fallback =
+      endpointScopedKeys.find((keyData) => !keyData.isInvalid) ||
+      endpointScopedKeys[0];
+    setSelectedApiKeyId(fallback?.key || "");
+  }, [endpointScopedKeys, selectedApiKeyId]);
+
   const canRun =
-    Boolean(primaryEndpointKey) &&
-    !primaryEndpointKey?.isInvalid &&
+    Boolean(selectedEndpointKey) &&
+    !selectedEndpointKey?.isInvalid &&
     Boolean(modelForRequest.trim()) &&
     Boolean(draftMessage.trim());
 
@@ -671,6 +809,31 @@ export default function PlaygroundPanel({
     () => buildCurlSnippet(normalizedBaseUrl, requestBody),
     [normalizedBaseUrl, requestBody]
   );
+  const javascriptSnippet = useMemo(
+    () => buildJavascriptSnippet(normalizedBaseUrl, requestBody),
+    [normalizedBaseUrl, requestBody]
+  );
+  const pythonSnippet = useMemo(
+    () => buildPythonSnippet(normalizedBaseUrl, requestBody),
+    [normalizedBaseUrl, requestBody]
+  );
+  const codeSnippetOptions = useMemo(
+    () =>
+      [
+        { id: "curl", label: "cURL", language: "bash", snippet: curlSnippet },
+        {
+          id: "javascript",
+          label: "JavaScript",
+          language: "javascript",
+          snippet: javascriptSnippet,
+        },
+        { id: "python", label: "Python", language: "python", snippet: pythonSnippet },
+      ] as const,
+    [curlSnippet, javascriptSnippet, pythonSnippet]
+  );
+  const selectedCodeSnippet =
+    codeSnippetOptions.find((option) => option.id === selectedSnippetKind) ||
+    codeSnippetOptions[0];
 
   const handleCopy = async (value: string) => {
     try {
@@ -691,7 +854,7 @@ export default function PlaygroundPanel({
   };
 
   const runRequest = async () => {
-    if (!canRun || !primaryEndpointKey) {
+    if (!canRun || !selectedEndpointKey) {
       toast.error("Add a valid API key and type a message first");
       return;
     }
@@ -729,22 +892,21 @@ export default function PlaygroundPanel({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${primaryEndpointKey.key}`,
+          Authorization: `Bearer ${selectedEndpointKey.key}`,
         },
-        body: JSON.stringify(requestPayload),
+        body: JSON.stringify({ ...requestPayload, stream: true }),
       });
 
-      const rawText = await response.text();
-      const latencyMs = Math.round(performance.now() - startedAt);
-
-      let parsedPayload: unknown = null;
-      try {
-        parsedPayload = rawText ? JSON.parse(rawText) : null;
-      } catch {
-        parsedPayload = null;
-      }
-
       if (!response.ok) {
+        const rawText = await response.text();
+        const latencyMs = Math.round(performance.now() - startedAt);
+        let parsedPayload: unknown = null;
+        try {
+          parsedPayload = rawText ? JSON.parse(rawText) : null;
+        } catch {
+          parsedPayload = null;
+        }
+
         const detail =
           parsedPayload &&
           typeof parsedPayload === "object" &&
@@ -775,27 +937,138 @@ export default function PlaygroundPanel({
         return;
       }
 
-      const assistantText =
-        parsedPayload !== null ? extractAssistantText(parsedPayload) : rawText;
-      const assistantOutput = assistantText || "(No assistant text returned)";
-      const assistantMessageEntry: ChatMessage = {
-        id: createMessageId(),
-        role: "assistant",
-        content: assistantOutput,
-        createdAt: Date.now(),
+      const assistantMessageId = createMessageId();
+      const assistantCreatedAt = Date.now();
+      setChatMessages((current) => [
+        ...current,
+        {
+          id: assistantMessageId,
+          role: "assistant",
+          content: "",
+          createdAt: assistantCreatedAt,
+        },
+      ]);
+
+      let streamedAssistantText = "";
+      let rawResponseText = "";
+      const updateAssistantMessage = (nextContent: string) => {
+        setChatMessages((current) =>
+          current.map((message) =>
+            message.id === assistantMessageId
+              ? { ...message, content: nextContent }
+              : message
+          )
+        );
       };
-      setChatMessages((current) => [...current, assistantMessageEntry]);
+
+      const contentType = response.headers.get("content-type") || "";
+      const isEventStream = contentType.includes("text/event-stream");
+      const reader = response.body?.getReader();
+
+      if (reader) {
+        const decoder = new TextDecoder();
+        let sseBuffer = "";
+
+        const processSseChunk = (flush: boolean) => {
+          const eventParts = sseBuffer.split(/\r?\n\r?\n/);
+          if (!flush) {
+            sseBuffer = eventParts.pop() || "";
+          } else {
+            sseBuffer = "";
+          }
+
+          for (const eventBlock of eventParts) {
+            const dataLines = eventBlock
+              .split(/\r?\n/)
+              .filter((line) => line.startsWith("data:"))
+              .map((line) => line.slice(5).trimStart());
+
+            if (dataLines.length === 0) continue;
+            const dataPayload = dataLines.join("\n").trim();
+            if (!dataPayload || dataPayload === "[DONE]") continue;
+
+            try {
+              const parsed = JSON.parse(dataPayload) as unknown;
+              const deltaText = extractAssistantDelta(parsed);
+              if (deltaText) {
+                streamedAssistantText += deltaText;
+                updateAssistantMessage(streamedAssistantText);
+              }
+            } catch {
+              streamedAssistantText += dataPayload;
+              updateAssistantMessage(streamedAssistantText);
+            }
+          }
+        };
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          const chunkText = decoder.decode(value, { stream: true });
+          rawResponseText += chunkText;
+
+          if (isEventStream || chunkText.includes("data:")) {
+            sseBuffer += chunkText;
+            processSseChunk(false);
+          }
+        }
+
+        const finalChunk = decoder.decode();
+        if (finalChunk) {
+          rawResponseText += finalChunk;
+          if (isEventStream || finalChunk.includes("data:")) {
+            sseBuffer += finalChunk;
+          }
+        }
+        if (isEventStream || sseBuffer.includes("data:")) {
+          processSseChunk(true);
+        }
+      } else {
+        rawResponseText = await response.text();
+      }
+
+      let parsedPayload: unknown = null;
+      if (rawResponseText.trim().length > 0) {
+        try {
+          parsedPayload = JSON.parse(rawResponseText);
+        } catch {
+          parsedPayload = null;
+        }
+      }
+
+      if (!streamedAssistantText) {
+        const assistantText =
+          parsedPayload !== null
+            ? extractAssistantText(parsedPayload)
+            : rawResponseText;
+        const assistantOutput = assistantText || "(No assistant text returned)";
+        streamedAssistantText = assistantOutput;
+        updateAssistantMessage(assistantOutput);
+      }
+
+      const latencyMs = Math.round(performance.now() - startedAt);
+      const assistantMessageEntry: ChatMessage = {
+        id: assistantMessageId,
+        role: "assistant",
+        content: streamedAssistantText,
+        createdAt: assistantCreatedAt,
+      };
+      setChatMessages((current) =>
+        current.map((message) =>
+          message.id === assistantMessageEntry.id ? assistantMessageEntry : message
+        )
+      );
       setRunState({
         status: "success",
         latencyMs,
         rawJson:
           parsedPayload !== null
             ? JSON.stringify(parsedPayload, null, 2)
-            : rawText || "{}",
+            : rawResponseText || "{}",
         error: null,
         completedAt: Date.now(),
       });
-      toast.success("Response received");
     } catch (error) {
       setRunState({
         status: "error",
@@ -815,164 +1088,91 @@ export default function PlaygroundPanel({
     });
   }, [chatMessages, runState.status]);
 
-  const runStatusClass =
-    runState.status === "success"
-      ? "border-border/80 bg-muted/40 text-foreground"
-      : runState.status === "error"
-        ? "border-border/80 bg-muted/20 text-foreground"
-        : runState.status === "running"
-          ? "border-border/80 bg-muted/20 text-foreground"
-          : "border-border/70 bg-muted/20 text-muted-foreground";
-  const runStatusLabel =
-    runState.status === "idle"
-      ? "Not run"
-      : runState.status === "running"
-        ? "Running"
-        : runState.status === "success"
-          ? "Success"
-          : "Error";
-  const setupStatusLabel =
-    !primaryEndpointKey || primaryEndpointKey.isInvalid
-      ? "Needs key"
-      : runState.status === "success"
-        ? "Ready"
-        : runState.status === "running"
-          ? "Running"
-          : runState.status === "error"
-            ? "Failed"
-            : "Configured";
-  const setupStatusClass =
-    !primaryEndpointKey || primaryEndpointKey.isInvalid
-      ? "border-border/70 bg-muted/20 text-muted-foreground"
-      : runState.status === "error"
-        ? "border-border/80 bg-muted/20 text-foreground"
-        : "border-border/80 bg-muted/40 text-foreground";
-
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-semibold text-foreground">Playground</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Test different models and nodes with saved settings per account.
-        </p>
-      </div>
+    <div className="space-y-3">
+      <section className="space-y-3">
+        <Card className="gap-0 p-3">
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+            <label className="space-y-1">
+              <span className="text-xs text-muted-foreground">Endpoint</span>
+              <SearchableSelect
+                value={normalizedBaseUrl}
+                onValueChange={handleEndpointChange}
+                options={endpointOptions}
+                placeholder="Select endpoint"
+                searchPlaceholder="Search endpoints..."
+                emptyMessage="No endpoint found."
+              />
+            </label>
 
-      <Card className="gap-0 space-y-4 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="text-sm text-muted-foreground">Active endpoint</div>
-            <div className="text-sm font-medium text-foreground break-all">
-              {withTrailingSlash(normalizedBaseUrl)}
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded-full border px-2.5 py-1 text-xs ${setupStatusClass}`}>
-              Setup: {setupStatusLabel}
-            </span>
-            <span className={`rounded-full border px-2.5 py-1 text-xs ${runStatusClass}`}>
-              Run: {runStatusLabel}
-            </span>
-          </div>
-        </div>
-      </Card>
+            <label className="space-y-1">
+              <span className="text-xs text-muted-foreground">Model</span>
+              <SearchableSelect
+                value={modelForRequest}
+                onValueChange={setSelectedModelId}
+                options={modelSearchOptions}
+                placeholder="Select model"
+                searchPlaceholder="Search models..."
+                emptyMessage="No model found."
+              />
+            </label>
 
-      <section className="grid gap-4 xl:grid-cols-[22rem_minmax(0,1fr)]">
-        <Card className="gap-0 space-y-4 p-4 xl:max-h-[calc(100vh-13rem)] xl:overflow-y-auto">
-          <div className="space-y-1">
-            <h3 className="text-lg font-semibold tracking-tight">Setup</h3>
-            <p className="text-sm text-muted-foreground">
-              Select endpoint and model, then chat in the right panel.
-            </p>
-          </div>
-
-          <label className="space-y-1">
-            <span className="text-xs text-muted-foreground">Endpoint</span>
-            <SearchableSelect
-              value={normalizedBaseUrl}
-              onValueChange={handleEndpointChange}
-              options={endpointOptions}
-              placeholder="Select endpoint"
-              searchPlaceholder="Search endpoints..."
-              emptyMessage="No endpoint found."
-            />
-          </label>
-
-          <label className="space-y-1">
-            <span className="text-xs text-muted-foreground">Model</span>
-            <SearchableSelect
-              value={modelForRequest}
-              onValueChange={setSelectedModelId}
-              options={modelSearchOptions}
-              placeholder="Select model"
-              searchPlaceholder="Search models..."
-              emptyMessage="No model found."
-            />
-          </label>
-
-          <div className="rounded-md border border-border/70 bg-muted/20 p-3">
-            <p className="text-xs text-muted-foreground">Current request settings</p>
-            <p className="mt-1 text-sm">{modelForRequest}</p>
-            <p className="text-xs text-muted-foreground">
-              Temperature: {clampTemperature(temperature)} • Max tokens:{" "}
-              {clampMaxTokens(maxTokens)}
-            </p>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Conversation turns: {chatMessages.length}
-            </p>
-          </div>
-
-          <div className="rounded-md border border-border/70 bg-muted/20 p-3">
-            <p className="text-xs text-muted-foreground">API key for endpoint</p>
-            {primaryEndpointKey ? (
-              <p className="mt-1 text-sm font-mono break-all">
-                {primaryEndpointKey.key.slice(0, 8)}...
-              </p>
-            ) : (
-              <div className="mt-2 space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  No key found for this endpoint.
-                </p>
+            <label className="space-y-1">
+              <span className="text-xs text-muted-foreground">API key</span>
+              {endpointKeyOptions.length > 0 ? (
+                <SearchableSelect
+                  value={selectedEndpointKey?.key || ""}
+                  onValueChange={setSelectedApiKeyId}
+                  options={endpointKeyOptions}
+                  placeholder="Select API key"
+                  searchPlaceholder="Search API keys..."
+                  emptyMessage="No API key found."
+                />
+              ) : (
                 <Button
                   variant="secondary"
                   size="sm"
                   type="button"
                   onClick={navigateToApiKeysTab}
+                  className="w-full"
                 >
-                  Open API Keys
+                  Add API Key
                 </Button>
-              </div>
-            )}
-            {primaryEndpointKey?.isInvalid ? (
-              <p className="mt-1 text-xs text-muted-foreground">
-                This key is marked invalid. Refresh or replace it in API Keys.
-              </p>
-            ) : null}
+              )}
+            </label>
+
+            <Button
+              variant="secondary"
+              size="sm"
+              type="button"
+              onClick={() => setShowRequestSettingsDialog(true)}
+              className="md:mb-0.5"
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+              Settings
+            </Button>
           </div>
 
-          {runState.rawJson ? (
-            <details className="rounded-md border border-border/70 bg-muted/20 p-3">
-              <summary className="cursor-pointer text-xs text-muted-foreground">
-                Last response JSON
-              </summary>
-              <pre className="mt-3 max-h-56 overflow-auto rounded-md border border-border/60 bg-muted/10 p-3 text-xs whitespace-pre-wrap">
-                {runState.rawJson}
-              </pre>
-            </details>
+          {selectedEndpointKey?.isInvalid ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              This key is marked invalid. Refresh or replace it in API Keys.
+            </p>
           ) : null}
         </Card>
 
-        <Card className="gap-0 min-h-[70vh] overflow-hidden p-0 xl:min-h-[calc(100vh-13rem)]">
-          <div className="flex items-center justify-between gap-2 border-b border-border/60 px-4 py-3">
-            <div className="space-y-1">
-              <h3 className="text-lg font-semibold tracking-tight">Chat</h3>
-              <p className="text-xs text-muted-foreground break-all">
-                {withTrailingSlash(normalizedBaseUrl)} • {modelForRequest}
-              </p>
-            </div>
+        <Card className="gap-0 h-[72vh] min-h-[28rem] overflow-hidden p-0 xl:h-[calc(100vh-13rem)] xl:min-h-0">
+          <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2.5 sm:px-4">
+            <h3 className="text-base font-semibold tracking-tight">Chat</h3>
             <div className="flex items-center gap-2">
-              <span className={`rounded-full border px-2.5 py-1 text-xs ${runStatusClass}`}>
-                {runStatusLabel}
-              </span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                type="button"
+                onClick={() => setShowCodeSnippetsDialog(true)}
+                aria-label="Open code snippets"
+              >
+                <Code2 className="h-4 w-4" />
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"
@@ -986,25 +1186,7 @@ export default function PlaygroundPanel({
             </div>
           </div>
 
-          {runState.completedAt ? (
-            <div className="border-b border-border/60 px-4 py-2 text-xs text-muted-foreground">
-              {runState.status === "success" ? (
-                <span className="inline-flex items-center gap-1">
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  Completed at {new Date(runState.completedAt).toLocaleTimeString()}
-                </span>
-              ) : (
-                <span>
-                  Last attempt {new Date(runState.completedAt).toLocaleTimeString()}
-                </span>
-              )}
-              {typeof runState.latencyMs === "number" ? (
-                <span>{` • ${runState.latencyMs}ms`}</span>
-              ) : null}
-            </div>
-          ) : null}
-
-          <div className="relative flex-1 overflow-y-auto px-4 py-5 sm:px-5">
+          <div className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-4">
             {chatMessages.length === 0 ? (
               <div className="flex h-full min-h-[18rem] flex-col items-center justify-center gap-3 text-center">
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-border/80 bg-muted/35">
@@ -1019,33 +1201,122 @@ export default function PlaygroundPanel({
                 {chatMessages.map((message) => (
                   <div
                     key={message.id}
-                    className={
-                      message.role === "user" ? "ml-auto max-w-[85%]" : "mr-auto max-w-[92%]"
-                    }
+                    className={`flex w-full ${
+                      message.role === "user" ? "justify-end" : "justify-start"
+                    }`}
                   >
                     <div
-                      className={`rounded-2xl border px-3.5 py-2.5 text-sm whitespace-pre-wrap ${
-                        message.role === "user"
-                          ? "border-border/80 bg-muted/45"
-                          : "border-border/70 bg-background"
+                      className={`max-w-[92%] ${
+                        message.role === "user" ? "text-right" : "text-left"
                       }`}
                     >
-                      {message.content}
+                      {message.role === "assistant" ? (
+                        <div className="px-1 text-sm leading-6 break-words">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+                              ul: ({ children }) => (
+                                <ul className="mb-3 ml-5 list-disc space-y-1 last:mb-0">
+                                  {children}
+                                </ul>
+                              ),
+                              ol: ({ children }) => (
+                                <ol className="mb-3 ml-5 list-decimal space-y-1 last:mb-0">
+                                  {children}
+                                </ol>
+                              ),
+                              li: ({ children }) => <li>{children}</li>,
+                              a: ({ href, children }) => (
+                                <a
+                                  href={href}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="underline decoration-muted-foreground/40 underline-offset-2 hover:decoration-foreground"
+                                >
+                                  {children}
+                                </a>
+                              ),
+                              blockquote: ({ children }) => (
+                                <blockquote className="mb-3 border-l-2 border-border/70 pl-3 text-muted-foreground last:mb-0">
+                                  {children}
+                                </blockquote>
+                              ),
+                              pre: ({ children }) => <>{children}</>,
+                              code: (props) => {
+                                const {
+                                  className,
+                                  children,
+                                  ...rest
+                                } = props as {
+                                  className?: string;
+                                  children?: React.ReactNode;
+                                  inline?: boolean;
+                                };
+                                const inline = Boolean((props as { inline?: boolean }).inline);
+                                const match = /language-(\w+)/.exec(className || "");
+                                const codeText = String(children || "").replace(/\n$/, "");
+
+                                if (!inline && match) {
+                                  return (
+                                    <div className="my-2 overflow-hidden rounded-md border border-border/70">
+                                      <SyntaxHighlighter
+                                        language={match[1]}
+                                        style={oneDark}
+                                        wrapLongLines
+                                        customStyle={{
+                                          margin: 0,
+                                          padding: "0.75rem",
+                                          fontSize: "0.75rem",
+                                          lineHeight: "1.4",
+                                        }}
+                                        codeTagProps={{
+                                          style: {
+                                            fontFamily:
+                                              "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                                          },
+                                        }}
+                                      >
+                                        {codeText}
+                                      </SyntaxHighlighter>
+                                    </div>
+                                  );
+                                }
+
+                                return (
+                                  <code
+                                    className="rounded bg-muted/40 px-1 py-0.5 font-mono text-[0.82em]"
+                                    {...rest}
+                                  >
+                                    {children}
+                                  </code>
+                                );
+                              },
+                            }}
+                          >
+                            {message.content}
+                          </ReactMarkdown>
+                        </div>
+                      ) : (
+                        <div className="px-1 text-sm leading-6 whitespace-pre-wrap">
+                          {message.content}
+                        </div>
+                      )}
+                      <p className="mt-1 px-1 text-[11px] text-muted-foreground/85">
+                        {message.role === "user" ? "You" : "Assistant"} •{" "}
+                        {new Date(message.createdAt).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
                     </div>
-                    <p className="mt-1 px-1 text-[11px] text-muted-foreground/85">
-                      {message.role === "user" ? "You" : "Assistant"} •{" "}
-                      {new Date(message.createdAt).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </p>
                   </div>
                 ))}
               </div>
             )}
 
             {runState.status === "running" ? (
-              <div className="mr-auto mt-2 inline-flex items-center gap-2 rounded-2xl border border-border/70 bg-muted/25 px-3 py-2 text-xs text-muted-foreground">
+              <div className="mr-auto mt-2 inline-flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 Generating response...
               </div>
@@ -1053,47 +1324,19 @@ export default function PlaygroundPanel({
             <div ref={conversationEndRef} />
           </div>
 
-          <div className="border-t border-border/60 bg-card/95 px-3 py-3 sm:px-4">
+          <div className="bg-card/95 px-3 py-2.5 sm:px-4">
             {runState.status === "error" ? (
               <div className="mb-2 rounded-md border border-border/70 bg-muted/25 px-3 py-2 text-xs">
                 {runState.error || "Request failed"}
               </div>
             ) : null}
 
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                type="button"
-                onClick={() => setShowRequestSettingsDialog(true)}
-              >
-                <Settings2 className="h-3.5 w-3.5" />
-                Request settings
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                type="button"
-                onClick={() => void handleCopy(curlSnippet)}
-              >
-                <Copy className="h-3.5 w-3.5" />
-                Copy cURL
-              </Button>
-              <p className="ml-auto text-xs text-muted-foreground">
-                {isModelsLoading || isModelsFetching
-                  ? "Loading models..."
-                  : `${modelOptions.length || 1} model option${
-                      (modelOptions.length || 1) > 1 ? "s" : ""
-                    } available.`}
-              </p>
-            </div>
-
             <div className="rounded-2xl border border-border/70 bg-muted/30">
               <textarea
                 value={draftMessage}
                 onChange={(event) => setDraftMessage(event.target.value)}
-                placeholder="Chat with your prompt..."
-                className="min-h-[96px] w-full resize-none bg-transparent px-3 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none"
+                placeholder="Type a message..."
+                className="min-h-[56px] max-h-40 w-full resize-none bg-transparent px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none"
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
@@ -1103,12 +1346,7 @@ export default function PlaygroundPanel({
                   }
                 }}
               />
-              <div className="flex items-center justify-between border-t border-border/60 px-2 py-2">
-                <p className="px-1 text-xs text-muted-foreground">
-                  {canRun
-                    ? "Enter to send • Shift+Enter for newline"
-                    : "Pick a valid key and type a message to start"}
-                </p>
+              <div className="flex items-center justify-end px-3 py-1.5">
                 <Button
                   size="icon-sm"
                   type="button"
@@ -1127,6 +1365,78 @@ export default function PlaygroundPanel({
           </div>
         </Card>
       </section>
+
+      <Dialog open={showCodeSnippetsDialog} onOpenChange={setShowCodeSnippetsDialog}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Code Snippets</DialogTitle>
+            <DialogDescription>
+              Use the current endpoint, model, and message payload.
+            </DialogDescription>
+          </DialogHeader>
+          <Tabs
+            value={selectedSnippetKind}
+            onValueChange={(value) => setSelectedSnippetKind(value as CodeSnippetKind)}
+            className="gap-3"
+          >
+            <div className="flex items-center gap-2">
+              <TabsList variant="line">
+                {codeSnippetOptions.map((option) => (
+                  <TabsTrigger key={option.id} value={option.id}>
+                    {option.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+              <Button
+                variant="secondary"
+                size="sm"
+                type="button"
+                className="ml-auto"
+                onClick={() => void handleCopy(selectedCodeSnippet.snippet)}
+              >
+                <Copy className="h-3.5 w-3.5" />
+                Copy
+              </Button>
+            </div>
+
+            {codeSnippetOptions.map((option) => (
+              <TabsContent key={option.id} value={option.id} className="mt-0">
+                <div className="overflow-hidden rounded-lg border border-border/70 bg-zinc-950">
+                  <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
+                    <p className="text-xs font-medium text-foreground">{option.label}</p>
+                    <p className="text-xs text-muted-foreground break-all">
+                      {withTrailingSlash(normalizedBaseUrl)}
+                    </p>
+                  </div>
+                  <div className="max-h-[55vh] overflow-auto">
+                    <SyntaxHighlighter
+                      language={option.language as CodeSnippetLanguage}
+                      style={oneDark}
+                      showLineNumbers
+                      wrapLongLines
+                      customStyle={{
+                        margin: 0,
+                        background: "transparent",
+                        padding: "0.75rem",
+                        fontSize: "0.75rem",
+                        lineHeight: "1.4",
+                      }}
+                      codeTagProps={{
+                        style: {
+                          fontFamily:
+                            "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                        },
+                      }}
+                    >
+                      {option.snippet}
+                    </SyntaxHighlighter>
+                  </div>
+                </div>
+              </TabsContent>
+            ))}
+          </Tabs>
+        </DialogContent>
+      </Dialog>
 
       <SettingsDialog
         open={showRequestSettingsDialog}

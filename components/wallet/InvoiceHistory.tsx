@@ -138,29 +138,19 @@ const InvoiceHistory: React.FC<InvoiceHistoryProps> = ({
   return (
     <div className="space-y-4">
       <div className="rounded-md border border-border bg-muted/25 p-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="grid gap-2 sm:grid-cols-3">
-            <div className="rounded-md border border-border/60 bg-background/35 px-2.5 py-2">
-              <p className="text-[11px] text-muted-foreground">Pending</p>
-              <p className="text-sm font-semibold text-foreground">{pendingCount}</p>
-            </div>
-            <div className="rounded-md border border-border/60 bg-background/35 px-2.5 py-2">
-              <p className="text-[11px] text-muted-foreground">Paid</p>
-              <p className="text-sm font-semibold text-foreground">{paidCount}</p>
-            </div>
-            <div className="rounded-md border border-border/60 bg-background/35 px-2.5 py-2">
-              <p className="text-[11px] text-muted-foreground">Expired</p>
-              <p className="text-sm font-semibold text-foreground">{expiredCount}</p>
-            </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/35 px-3 py-1 text-xs">
+            <span className="text-muted-foreground">Pending</span>
+            <span className="font-semibold text-foreground">{pendingCount}</span>
           </div>
-          <div className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">
-              {pendingCount > 0 ? "Pending invoices need checks." : "All invoices processed"}
-            </span>
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/35 px-3 py-1 text-xs">
+            <span className="text-muted-foreground">Paid</span>
+            <span className="font-semibold text-foreground">{paidCount}</span>
           </div>
-        </div>
-        <div className="mt-3">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/35 px-3 py-1 text-xs">
+            <span className="text-muted-foreground">Expired</span>
+            <span className="font-semibold text-foreground">{expiredCount}</span>
+          </div>
           <Button
             onClick={() => {
               if (onCheckNow) void onCheckNow();
@@ -168,11 +158,16 @@ const InvoiceHistory: React.FC<InvoiceHistoryProps> = ({
             disabled={isChecking || !onCheckNow}
             variant="secondary"
             size="sm"
+            className="ml-auto"
             type="button"
           >
             <RefreshCw className={`h-3 w-3 ${isChecking ? "animate-spin" : ""}`} />
             {isChecking ? "Checking..." : "Check Now"}
           </Button>
+        </div>
+        <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <AlertCircle className="h-3.5 w-3.5" />
+          <span>{pendingCount > 0 ? "Pending invoices need checks." : "All invoices processed"}</span>
         </div>
       </div>
 

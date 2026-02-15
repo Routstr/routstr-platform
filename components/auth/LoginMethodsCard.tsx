@@ -22,6 +22,7 @@ import { NostrConnectSigner } from "applesauce-signers";
 import { RelayPool } from "applesauce-relay";
 import { toast } from "sonner";
 import { useAccountManager, AccountMetadata } from "@/components/providers/ClientProviders";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -35,8 +36,10 @@ NostrConnectSigner.publishMethod = pool.publish.bind(pool);
 
 export default function LoginMethodsCard({
   onLoggedIn,
+  compact = false,
 }: {
   onLoggedIn?: () => void;
+  compact?: boolean;
 }) {
   const { manager, manualSave } = useAccountManager();
   const [hasExtension] = useState(() => {
@@ -204,13 +207,20 @@ export default function LoginMethodsCard({
   }, [manager, manualSave, completeLogin]);
 
   return (
-    <div className="space-y-4 rounded-xl border border-border/80 bg-background/70 p-5">
-      <div className="space-y-1">
-        <h2 className="text-xl font-semibold text-foreground">Developer Sign In</h2>
-        <p className="text-sm text-muted-foreground">
-          Connect a Nostr identity to access key and wallet controls.
-        </p>
-      </div>
+    <div
+      className={cn(
+        "space-y-4 rounded-xl border border-border/80 bg-background/70 p-5",
+        compact && "rounded-none border-0 bg-transparent p-0"
+      )}
+    >
+      {!compact ? (
+        <div className="space-y-1">
+          <h2 className="text-xl font-semibold text-foreground">Developer Sign In</h2>
+          <p className="text-sm text-muted-foreground">
+            Connect a Nostr identity to access key and wallet controls.
+          </p>
+        </div>
+      ) : null}
 
       {signupStep === "save-keys" && generatedNsec ? (
         <div className="rounded-lg border border-border bg-muted/40 p-4 space-y-3">

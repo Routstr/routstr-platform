@@ -5,10 +5,7 @@ import {
   CheckCircle2,
   Circle,
   ClipboardPaste,
-  History,
   Loader2,
-  QrCode,
-  Zap,
 } from "lucide-react";
 import { MintQuoteState } from "@cashu/cashu-ts";
 import { toast } from "sonner";
@@ -364,8 +361,8 @@ const WalletTab: React.FC<WalletTabProps> = ({
   ]);
 
   const popularAmounts = [100, 500, 1000];
-  type WalletWorkflowId = "fund" | "pay" | "tokens" | "history";
-  const [activeTab, setActiveTab] = useState<WalletWorkflowId>("fund");
+  type WalletWorkflowId = "deposit" | "send" | "history";
+  const [activeTab, setActiveTab] = useState<WalletWorkflowId>("deposit");
 
   const mintDisplay = useMemo(() => {
     try {
@@ -374,33 +371,6 @@ const WalletTab: React.FC<WalletTabProps> = ({
       return mintUrl;
     }
   }, [mintUrl]);
-
-  const workflowTabs: Array<{
-    id: WalletWorkflowId;
-    label: string;
-    icon: React.ComponentType<{ className?: string }>;
-  }> = [
-    {
-      id: "fund",
-      label: "Deposit",
-      icon: Zap,
-    },
-    {
-      id: "pay",
-      label: "Pay",
-      icon: QrCode,
-    },
-    {
-      id: "tokens",
-      label: "Send",
-      icon: ClipboardPaste,
-    },
-    {
-      id: "history",
-      label: "Invoices",
-      icon: History,
-    },
-  ];
 
   const handleQuickMint = async (amount: number) => {
     setMintAmount(amount.toString());
@@ -453,36 +423,42 @@ const WalletTab: React.FC<WalletTabProps> = ({
       )}
 
       <div className="grid gap-4 xl:grid-cols-[13rem_minmax(0,1fr)]">
-        <aside className="rounded-xl border border-border/70 bg-card/70 p-2.5">
-          <p className="px-2 pb-2 text-[11px] text-muted-foreground">
-            Wallet
-          </p>
+        <aside className="rounded-xl border border-border/70 bg-card/70 p-2.5 xl:h-[34rem] xl:overflow-y-auto">
+          <p className="px-2 pb-2 text-[11px] text-muted-foreground">Wallet</p>
           <nav className="space-y-1.5">
-            {workflowTabs.map((tab) => {
-              const isActive = activeTab === tab.id;
-              const TabIcon = tab.icon;
-              return (
-                <Button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  variant={isActive ? "secondary" : "ghost"}
-                  size="lg"
-                  className="w-full justify-start"
-                  type="button"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <TabIcon className="h-4 w-4" />
-                    <span className="text-sm font-medium">{tab.label}</span>
-                  </div>
-                </Button>
-              );
-            })}
+            <Button
+              onClick={() => setActiveTab("deposit")}
+              variant={activeTab === "deposit" ? "secondary" : "ghost"}
+              size="lg"
+              className="w-full justify-start"
+              type="button"
+            >
+              Deposit
+            </Button>
+            <Button
+              onClick={() => setActiveTab("send")}
+              variant={activeTab === "send" ? "secondary" : "ghost"}
+              size="lg"
+              className="w-full justify-start"
+              type="button"
+            >
+              Send
+            </Button>
+            <Button
+              onClick={() => setActiveTab("history")}
+              variant={activeTab === "history" ? "secondary" : "ghost"}
+              size="lg"
+              className="w-full justify-start"
+              type="button"
+            >
+              Invoices
+            </Button>
           </nav>
         </aside>
 
-        <section className="rounded-xl border border-border/70 bg-card/80 p-4 sm:p-5 min-h-[30rem]">
-          {activeTab === "fund" && (
-            <div className="space-y-4">
+        <section className="rounded-xl border border-border/70 bg-card/80 p-4 sm:p-5 min-h-[30rem] xl:h-[34rem] xl:overflow-hidden">
+          {activeTab === "deposit" && (
+            <div className="space-y-6 h-full xl:overflow-y-auto xl:pr-1">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h3 className="text-base font-semibold tracking-tight">Deposit</h3>
@@ -497,268 +473,22 @@ const WalletTab: React.FC<WalletTabProps> = ({
                 ) : null}
               </div>
 
-              <div className="rounded-xl border border-border/60 bg-muted/15 p-4 space-y-4">
-                <BitcoinConnectStatusRow
-                  status={bcStatus}
-                  balance={bcBalance}
-                  onConnect={connectWallet}
-                  className="rounded-md border border-border/60 bg-muted/25 p-3"
-                />
-
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {popularAmounts.map((amount) => (
-                    <Button
-                      key={`mint-quick-${amount}`}
-                      onClick={() => void handleQuickMint(amount)}
-                      disabled={isMinting}
-                      variant="secondary"
-                      type="button"
-                    >
-                      {amount} sats
-                    </Button>
-                  ))}
-                </div>
-
-                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_13rem]">
-                  <Input
-                    type="number"
-                    value={mintAmount}
-                    onChange={(event) => setMintAmount(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        void createMintQuote();
-                      }
-                    }}
-                    placeholder="Amount in sats"
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium text-foreground/80">Via Lightning</h3>
+                <div className="rounded-xl border border-border/60 bg-muted/15 p-4 space-y-4">
+                  <BitcoinConnectStatusRow
+                    status={bcStatus}
+                    balance={bcBalance}
+                    onConnect={connectWallet}
+                    className="rounded-md border border-border/60 bg-muted/25 p-3"
                   />
-                  <Button
-                    onClick={() => void createMintQuote()}
-                    disabled={isMinting || !mintAmount}
-                    className="w-full"
-                    type="button"
-                  >
-                    {isMinting ? "Creating..." : "Create invoice"}
-                  </Button>
-                </div>
 
-                <div className="rounded-md border border-border/60 bg-background/30 p-3 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <h4 className="text-sm font-medium">Invoice Console</h4>
-                    <span className="rounded-full border border-border/60 bg-background/35 px-2 py-0.5 text-[11px] text-muted-foreground">
-                      {mintInvoice ? "Quote ready" : "Waiting for quote"}
-                    </span>
-                  </div>
-                  {mintInvoice ? (
-                    <>
-                      <div className="rounded-md border border-border/60 bg-background/40 p-3">
-                        <p className="text-xs text-muted-foreground">BOLT11</p>
-                        <p className="mt-1 max-h-24 overflow-auto break-all font-mono text-xs text-foreground/85">
-                          {mintInvoice}
-                        </p>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Quote status:{" "}
-                        <span className="font-medium text-foreground/90">
-                          {String(mintQuote?.state || "pending")}
-                        </span>
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          onClick={() => setShowInvoiceModal(true)}
-                          variant="secondary"
-                          type="button"
-                        >
-                          Open QR modal
-                        </Button>
-                        <Button
-                          onClick={() => {
-                            void payMintInvoiceWithConnectedWallet();
-                          }}
-                          disabled={isPayingWithWallet}
-                          variant="secondary"
-                          type="button"
-                        >
-                          {isPayingWithWallet ? "Paying..." : "Pay with connected wallet"}
-                        </Button>
-                        <Button
-                          onClick={() => {
-                            void checkMintQuote();
-                          }}
-                          variant="secondary"
-                          type="button"
-                        >
-                          Check status now
-                        </Button>
-                        <Button
-                          onClick={handleCancel}
-                          variant="ghost"
-                          type="button"
-                        >
-                          Clear invoice
-                        </Button>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="space-y-2">
-                      {[
-                        "Choose an amount and create an invoice quote.",
-                        "Pay using any Lightning wallet or NWC.",
-                        "Run a check to confirm mint settlement.",
-                      ].map((step) => (
-                        <div
-                          key={step}
-                          className="flex items-start gap-2 rounded-md border border-border/50 bg-background/30 px-2.5 py-2"
-                        >
-                          <Circle className="mt-0.5 h-3.5 w-3.5 text-muted-foreground" />
-                          <p className="text-xs text-muted-foreground">{step}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "pay" && (
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-base font-semibold tracking-tight">Pay Lightning</h3>
-                <p className="text-sm text-muted-foreground">
-                  Paste an invoice and settle directly from your wallet balance.
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-border/60 bg-muted/15 p-4 space-y-5">
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-xs text-muted-foreground">Invoice</span>
-                  <Input
-                    placeholder="lnbc..."
-                    value={sendInvoice}
-                    onChange={(event) => {
-                      void handleInvoiceInput(event.target.value);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        void handlePayInvoice();
-                      }
-                    }}
-                  />
-                </label>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-md bg-background/30 p-3">
-                    <p className="text-xs text-muted-foreground">Amount</p>
-                    <p className="mt-1 text-base font-semibold text-foreground">
-                      {invoiceAmount !== null
-                        ? `${invoiceAmount.toLocaleString()} sats`
-                        : "Awaiting quote"}
-                    </p>
-                  </div>
-                  <div className="rounded-md bg-background/30 p-3">
-                    <p className="text-xs text-muted-foreground">Max fee reserve</p>
-                    <p className="mt-1 text-base font-semibold text-foreground">
-                      {invoiceFeeReserve !== null
-                        ? `${invoiceFeeReserve.toLocaleString()} sats`
-                        : "—"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="rounded-md bg-background/20 p-3 space-y-4">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-md bg-background/25 p-3">
-                      <p className="text-[11px] text-muted-foreground">Available balance</p>
-                      <p className="mt-1 text-sm font-semibold text-foreground">
-                        {balance.toLocaleString()} sats
-                      </p>
-                    </div>
-                    <div className="rounded-md bg-background/25 p-3">
-                      <p className="text-[11px] text-muted-foreground">Total spend budget</p>
-                      <p className="mt-1 text-sm font-semibold text-foreground">
-                        {payTotalBudget !== null
-                          ? `${payTotalBudget.toLocaleString()} sats`
-                          : "Awaiting quote"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="h-px bg-border/45" />
-                  <div className="space-y-2 px-1">
-                    <div className="flex items-center gap-2 text-xs">
-                      {hasPayInvoiceInput ? (
-                        <CheckCircle2 className="h-3.5 w-3.5 text-foreground/90" />
-                      ) : (
-                        <Circle className="h-3.5 w-3.5 text-muted-foreground" />
-                      )}
-                      <span className="text-muted-foreground">Invoice pasted</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs">
-                      {invoiceAmount !== null ? (
-                        <CheckCircle2 className="h-3.5 w-3.5 text-foreground/90" />
-                      ) : (
-                        <Circle className="h-3.5 w-3.5 text-muted-foreground" />
-                      )}
-                      <span className="text-muted-foreground">Quote resolved</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs">
-                      {payTotalBudget !== null && canCoverPayBudget ? (
-                        <CheckCircle2 className="h-3.5 w-3.5 text-foreground/90" />
-                      ) : (
-                        <Circle className="h-3.5 w-3.5 text-muted-foreground" />
-                      )}
-                      <span className="text-muted-foreground">Budget sufficient</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3 pt-2">
-                  <Button
-                    onClick={resetSendInvoiceState}
-                    variant="ghost"
-                    type="button"
-                  >
-                    Clear
-                  </Button>
-                  <Button
-                    onClick={() => void handlePayInvoice()}
-                    disabled={
-                      isProcessing || isLoadingInvoice || !sendInvoice || invoiceAmount === null
-                    }
-                    type="button"
-                  >
-                    {isProcessing || isLoadingInvoice ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : null}
-                    {isProcessing
-                      ? "Processing..."
-                      : isLoadingInvoice
-                        ? "Loading quote..."
-                        : "Pay invoice"}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "tokens" && (
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-base font-semibold tracking-tight">Send Tokens</h3>
-                <p className="text-sm text-muted-foreground">
-                  Export eCash to share, or import a token you received.
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-border/60 bg-muted/15 p-4 space-y-5">
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium">Generate token</h4>
-                  <div className="grid gap-2 grid-cols-3">
+                  <div className="grid gap-2 sm:grid-cols-3">
                     {popularAmounts.map((amount) => (
                       <Button
-                        key={`send-quick-${amount}`}
-                        onClick={() => setSendAmount(amount.toString())}
+                        key={`mint-quick-${amount}`}
+                        onClick={() => void handleQuickMint(amount)}
+                        disabled={isMinting}
                         variant="secondary"
                         type="button"
                       >
@@ -766,55 +496,85 @@ const WalletTab: React.FC<WalletTabProps> = ({
                       </Button>
                     ))}
                   </div>
+
                   <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_13rem]">
                     <Input
                       type="number"
-                      value={sendAmount}
-                      onChange={(event) => setSendAmount(event.target.value)}
+                      value={mintAmount}
+                      onChange={(event) => setMintAmount(event.target.value)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
                           event.preventDefault();
-                          void generateSendToken();
+                          void createMintQuote();
                         }
                       }}
                       placeholder="Amount in sats"
                     />
                     <Button
-                      onClick={() => void generateSendToken()}
-                      disabled={isGeneratingSendToken || !sendAmount}
+                      onClick={() => void createMintQuote()}
+                      disabled={isMinting || !mintAmount}
                       className="w-full"
                       type="button"
                     >
-                      {isGeneratingSendToken ? "Generating..." : "Generate"}
+                      {isMinting ? "Creating..." : "Create invoice"}
                     </Button>
                   </div>
-                  {generatedToken ? (
-                    <div className="rounded-md border border-border/60 bg-background/35 p-3">
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">Generated token</span>
-                        <Button
-                          onClick={copyTokenToClipboard}
-                          variant="ghost"
-                          size="xs"
-                          type="button"
-                        >
-                          Copy
-                        </Button>
+
+                  {mintInvoice ? (
+                    <div className="space-y-4">
+                      <div className="bg-muted/50 border border-border rounded-md p-4">
+                        <div className="mb-2 flex justify-between items-center">
+                          <span className="text-sm text-muted-foreground">
+                            Lightning Invoice
+                          </span>
+                          <button
+                            onClick={() => setShowInvoiceModal(true)}
+                            className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                            type="button"
+                          >
+                            Show QR code
+                          </button>
+                        </div>
+                        <div className="font-mono text-xs break-all text-muted-foreground">
+                          {mintInvoice}
+                        </div>
                       </div>
-                      <p className="max-h-36 overflow-auto break-all font-mono text-xs text-foreground/85">
-                        {generatedToken}
-                      </p>
+
+                      <div className="bg-muted/50 border border-border rounded-md p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs text-muted-foreground">
+                            Pay with connected wallet
+                          </span>
+                          <Button
+                            onClick={() => {
+                              void payMintInvoiceWithConnectedWallet();
+                            }}
+                            disabled={isPayingWithWallet}
+                            size="sm"
+                            variant="secondary"
+                            type="button"
+                          >
+                            {isPayingWithWallet ? "Paying..." : "Pay"}
+                          </Button>
+                        </div>
+                      </div>
+
+                      <Button
+                        onClick={handleCancel}
+                        variant="secondary"
+                        className="w-full"
+                        type="button"
+                      >
+                        Cancel
+                      </Button>
                     </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      Set an amount and generate a transferable eCash token.
-                    </p>
-                  )}
+                  ) : null}
                 </div>
+              </div>
 
-                <div className="h-px bg-border/60" />
-
-                <div className="space-y-3">
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium text-foreground/80">Via Cashu</h3>
+                <div className="rounded-xl border border-border/60 bg-muted/15 p-4 space-y-3">
                   <h4 className="text-sm font-medium">Import token</h4>
                   <div className="relative">
                     <Textarea
@@ -843,7 +603,7 @@ const WalletTab: React.FC<WalletTabProps> = ({
                   </Button>
                   <div className="rounded-md bg-background/25 p-2.5">
                     <p className="text-xs text-muted-foreground">
-                      Refunds return a Cashu token. Import it here to restore balance.
+                      Paste a received Cashu token to top up your wallet balance.
                     </p>
                   </div>
                 </div>
@@ -851,8 +611,194 @@ const WalletTab: React.FC<WalletTabProps> = ({
             </div>
           )}
 
+          {activeTab === "send" && (
+            <div className="space-y-6 h-full xl:overflow-y-auto xl:pr-1">
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium text-foreground/80">
+                  Via Lightning
+                </h3>
+                <div className="rounded-xl border border-border/60 bg-muted/15 p-4 space-y-5">
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-xs text-muted-foreground">Invoice</span>
+                    <Input
+                      placeholder="lnbc..."
+                      value={sendInvoice}
+                      onChange={(event) => {
+                        void handleInvoiceInput(event.target.value);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          void handlePayInvoice();
+                        }
+                      }}
+                    />
+                  </label>
+
+                  {hasPayInvoiceInput ? (
+                    <>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-md bg-background/30 p-3">
+                          <p className="text-xs text-muted-foreground">Amount</p>
+                          <p className="mt-1 text-base font-semibold text-foreground">
+                            {invoiceAmount !== null
+                              ? `${invoiceAmount.toLocaleString()} sats`
+                              : "Awaiting quote"}
+                          </p>
+                        </div>
+                        <div className="rounded-md bg-background/30 p-3">
+                          <p className="text-xs text-muted-foreground">Max fee reserve</p>
+                          <p className="mt-1 text-base font-semibold text-foreground">
+                            {invoiceFeeReserve !== null
+                              ? `${invoiceFeeReserve.toLocaleString()} sats`
+                              : "—"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-md bg-background/20 p-3 space-y-4">
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="rounded-md bg-background/25 p-3">
+                            <p className="text-[11px] text-muted-foreground">Available balance</p>
+                            <p className="mt-1 text-sm font-semibold text-foreground">
+                              {balance.toLocaleString()} sats
+                            </p>
+                          </div>
+                          <div className="rounded-md bg-background/25 p-3">
+                            <p className="text-[11px] text-muted-foreground">Total spend budget</p>
+                            <p className="mt-1 text-sm font-semibold text-foreground">
+                              {payTotalBudget !== null
+                                ? `${payTotalBudget.toLocaleString()} sats`
+                                : "Awaiting quote"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="h-px bg-border/45" />
+                        <div className="space-y-2 px-1">
+                          <div className="flex items-center gap-2 text-xs">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-foreground/90" />
+                            <span className="text-muted-foreground">Invoice pasted</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs">
+                            {invoiceAmount !== null ? (
+                              <CheckCircle2 className="h-3.5 w-3.5 text-foreground/90" />
+                            ) : (
+                              <Circle className="h-3.5 w-3.5 text-muted-foreground" />
+                            )}
+                            <span className="text-muted-foreground">Quote resolved</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs">
+                            {payTotalBudget !== null && canCoverPayBudget ? (
+                              <CheckCircle2 className="h-3.5 w-3.5 text-foreground/90" />
+                            ) : (
+                              <Circle className="h-3.5 w-3.5 text-muted-foreground" />
+                            )}
+                            <span className="text-muted-foreground">Budget sufficient</span>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+
+                  <div className="flex flex-wrap items-center gap-3 pt-2">
+                    <Button
+                      onClick={resetSendInvoiceState}
+                      variant="ghost"
+                      type="button"
+                    >
+                      Clear
+                    </Button>
+                    <Button
+                      onClick={() => void handlePayInvoice()}
+                      disabled={
+                        isProcessing || isLoadingInvoice || !sendInvoice || invoiceAmount === null
+                      }
+                      type="button"
+                    >
+                      {isProcessing || isLoadingInvoice ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : null}
+                      {isProcessing
+                        ? "Processing..."
+                        : isLoadingInvoice
+                          ? "Loading quote..."
+                          : "Pay invoice"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium text-foreground/80">
+                  Via eCash
+                </h3>
+                <div className="rounded-xl border border-border/60 bg-muted/15 p-4 space-y-5">
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-medium">Generate token</h4>
+                    <div className="grid gap-2 grid-cols-3">
+                      {popularAmounts.map((amount) => (
+                        <Button
+                          key={`send-quick-${amount}`}
+                          onClick={() => setSendAmount(amount.toString())}
+                          variant="secondary"
+                          type="button"
+                        >
+                          {amount} sats
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_13rem]">
+                      <Input
+                        type="number"
+                        value={sendAmount}
+                        onChange={(event) => setSendAmount(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void generateSendToken();
+                          }
+                        }}
+                        placeholder="Amount in sats"
+                      />
+                      <Button
+                        onClick={() => void generateSendToken()}
+                        disabled={isGeneratingSendToken || !sendAmount}
+                        className="w-full"
+                        type="button"
+                      >
+                        {isGeneratingSendToken ? "Generating..." : "Generate"}
+                      </Button>
+                    </div>
+                    {generatedToken ? (
+                      <div className="rounded-md border border-border/60 bg-background/35 p-3">
+                        <div className="mb-2 flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Generated token</span>
+                          <Button
+                            onClick={copyTokenToClipboard}
+                            variant="ghost"
+                            size="xs"
+                            type="button"
+                          >
+                            Copy
+                          </Button>
+                        </div>
+                        <p className="max-h-36 overflow-auto break-all font-mono text-xs text-foreground/85">
+                          {generatedToken}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Set an amount and generate a transferable eCash token.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeTab === "history" && (
-            <div className="space-y-3">
+            <div className="space-y-3 h-full xl:overflow-y-auto xl:pr-1">
               <div>
                 <h3 className="text-base font-semibold tracking-tight">Invoices</h3>
                 <p className="text-sm text-muted-foreground">
