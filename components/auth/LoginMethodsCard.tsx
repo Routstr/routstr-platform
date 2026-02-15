@@ -2,7 +2,9 @@
 
 import { useCallback, useMemo, useState } from "react";
 import {
+  Check,
   ClipboardPaste,
+  Copy,
   Eye,
   EyeOff,
   KeyRound,
@@ -79,7 +81,6 @@ export default function LoginMethodsCard({
   const copy = useCallback(async (value: string) => {
     try {
       await navigator.clipboard.writeText(value);
-      toast.success("Copied");
     } catch {
       toast.error("Failed to copy");
     }
@@ -265,7 +266,12 @@ export default function LoginMethodsCard({
               className="shrink-0"
               type="button"
             >
-              {nsecCopied ? "Copied" : "Copy"}
+              {nsecCopied ? (
+                <Check className="h-3.5 w-3.5" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
+              Copy
             </Button>
           </div>
 

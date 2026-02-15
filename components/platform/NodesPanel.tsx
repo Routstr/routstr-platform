@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Copy, RefreshCw, XCircle } from "lucide-react";
+import { Check, CheckCircle2, Copy, RefreshCw, XCircle } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
@@ -371,6 +371,7 @@ export default function NodesPanel({
   const [modelSort, setModelSort] = useState<ModelSortOption>("release-new");
   const [selectedModelDetail, setSelectedModelDetail] =
     useState<SelectedModelDetail | null>(null);
+  const [copiedModelId, setCopiedModelId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
@@ -676,10 +677,13 @@ export default function NodesPanel({
     return rows;
   }, [selectedModelDetail]);
 
-  const handleCopy = async (value: string) => {
+  const handleCopy = async (value: string, modelId: string) => {
     try {
       await navigator.clipboard.writeText(value);
-      toast.success("Copied to clipboard");
+      setCopiedModelId(modelId);
+      setTimeout(() => {
+        setCopiedModelId((current) => (current === modelId ? null : current));
+      }, 1400);
     } catch {
       toast.error("Unable to copy");
     }
@@ -758,8 +762,8 @@ export default function NodesPanel({
         </div>
       </Card>
 
-      <section className="grid gap-3 md:min-h-0 md:flex-1 lg:grid-cols-[17rem_minmax(0,1fr)]">
-        <Card className="gap-0 p-3 md:min-h-0 md:h-full">
+      <section className="grid content-start items-start gap-3 md:min-h-0 md:flex-1 md:items-stretch lg:grid-cols-[17rem_minmax(0,1fr)]">
+        <Card className="self-start gap-0 p-3 md:min-h-0 md:h-full md:self-stretch">
           <div className="space-y-2">
             <Input
               value={search}
@@ -768,7 +772,7 @@ export default function NodesPanel({
             />
           </div>
 
-          <div className="mt-3 min-h-0 flex-1 overflow-auto overscroll-y-contain">
+          <div className="mt-3 max-h-72 overflow-auto overscroll-y-contain md:min-h-0 md:flex-1 md:max-h-none">
             {isDirectoryLoading || isSummariesLoading ? (
               <div className="space-y-2" aria-hidden="true">
                 {[0, 1, 2, 3].map((index) => (
@@ -827,11 +831,11 @@ export default function NodesPanel({
           </div>
         </Card>
 
-        <Card className="gap-0 p-3 md:min-h-0 md:h-full">
+        <Card className="self-start flex min-h-0 flex-col gap-0 p-3 md:h-full md:min-h-0 md:self-stretch">
           {!selectedSummary ? (
             <p className="text-sm text-muted-foreground">Select a node to inspect models.</p>
           ) : (
-            <div className="flex h-full min-h-0 flex-col">
+            <div className="flex min-h-0 flex-col md:h-full">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0 space-y-0.5">
                   <div className="flex items-center gap-1.5">
@@ -895,7 +899,7 @@ export default function NodesPanel({
                 </Select>
               </div>
 
-              <div className="mt-2.5 min-h-0 flex-1 overflow-auto overscroll-y-contain space-y-1.5 pr-1">
+              <div className="mt-2.5 space-y-1.5 pr-1 md:min-h-0 md:flex-1 md:overflow-auto md:overscroll-y-contain">
                 {filteredDisplayModels.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
                     {displayModels.length === 0 ? "No models returned." : "No models match this search."}
@@ -936,7 +940,7 @@ export default function NodesPanel({
                             <Button
                               onClick={(event) => {
                                 event.stopPropagation();
-                                void handleCopy(modelId);
+                                void handleCopy(modelId, modelId);
                               }}
                               variant="ghost"
                               size="icon-xs"
@@ -944,7 +948,11 @@ export default function NodesPanel({
                               className="h-5 w-5 shrink-0 text-muted-foreground hover:text-foreground"
                               title="Copy model id"
                             >
-                              <Copy className="h-2.5 w-2.5" />
+                              {copiedModelId === modelId ? (
+                                <Check className="h-2.5 w-2.5" />
+                              ) : (
+                                <Copy className="h-2.5 w-2.5" />
+                              )}
                               <span className="sr-only">Copy model id</span>
                             </Button>
                           </div>
@@ -994,10 +1002,14 @@ export default function NodesPanel({
                     size="icon-xs"
                     type="button"
                     className="h-5 w-5 shrink-0"
-                    onClick={() => void handleCopy(selectedModelId)}
+                    onClick={() => void handleCopy(selectedModelId, selectedModelId)}
                     title="Copy model id"
                   >
-                    <Copy className="h-2.5 w-2.5" />
+                    {copiedModelId === selectedModelId ? (
+                      <Check className="h-2.5 w-2.5" />
+                    ) : (
+                      <Copy className="h-2.5 w-2.5" />
+                    )}
                     <span className="sr-only">Copy model id</span>
                   </Button>
                 </>

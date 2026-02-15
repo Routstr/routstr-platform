@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
+  Check,
   CheckCircle,
   Clock,
   Copy,
@@ -74,6 +75,7 @@ const InvoiceHistory: React.FC<InvoiceHistoryProps> = ({
 }) => {
   const [invoices, setInvoices] = useState<WalletInvoice[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [copiedInvoiceId, setCopiedInvoiceId] = useState<string | null>(null);
 
   const refreshInvoices = () => {
     setInvoices(readWalletInvoices());
@@ -213,9 +215,18 @@ const InvoiceHistory: React.FC<InvoiceHistoryProps> = ({
                       {truncateInvoice(invoice.paymentRequest)}
                     </code>
                     <Button
-                      onClick={() => {
-                        void navigator.clipboard.writeText(invoice.paymentRequest);
-                        toast.success("Copied to clipboard");
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(invoice.paymentRequest);
+                          setCopiedInvoiceId(invoice.id);
+                          setTimeout(() => {
+                            setCopiedInvoiceId((current) =>
+                              current === invoice.id ? null : current
+                            );
+                          }, 1400);
+                        } catch {
+                          toast.error("Unable to copy invoice");
+                        }
                       }}
                       variant="ghost"
                       size="icon-xs"
@@ -223,7 +234,11 @@ const InvoiceHistory: React.FC<InvoiceHistoryProps> = ({
                       title="Copy invoice"
                       type="button"
                     >
-                      <Copy className="h-3 w-3" />
+                      {copiedInvoiceId === invoice.id ? (
+                        <Check className="h-3 w-3" />
+                      ) : (
+                        <Copy className="h-3 w-3" />
+                      )}
                     </Button>
                   </div>
 

@@ -1018,7 +1018,6 @@ export default function ApiKeysPanel({
     try {
       await navigator.clipboard.writeText(value);
       setCopiedKey(keyId);
-      toast.success("Copied");
       setTimeout(() => setCopiedKey(null), 1500);
     } catch {
       toast.error("Copy failed");
@@ -1188,8 +1187,8 @@ export default function ApiKeysPanel({
     try {
       const result = await performRefund(keyToDelete);
       if (result.token) {
-        toast.success("Refund complete. Token copied to clipboard.");
         await navigator.clipboard.writeText(result.token);
+        toast.success("Refund complete");
       } else {
         toast.success("Refund complete");
       }
@@ -1708,7 +1707,7 @@ export default function ApiKeysPanel({
                             const result = await performRefund(keyData);
                             if (result.token) {
                               await navigator.clipboard.writeText(result.token);
-                              toast.success("Refund token copied to clipboard");
+                              toast.success("Refund complete");
                             } else {
                               toast.success("Refund complete");
                             }

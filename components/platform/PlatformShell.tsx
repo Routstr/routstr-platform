@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Check,
   Code2,
   Copy,
   Eye,
@@ -330,6 +331,10 @@ export default function PlatformShell({
   );
   const currentTab = isGuestMode ? "home" : activeTab;
   const tabMeta = TAB_META[currentTab];
+  const mobileContentPadding =
+    currentTab === "nodes"
+      ? "pb-[calc(1.5rem+env(safe-area-inset-bottom))]"
+      : "pb-[calc(4.75rem+env(safe-area-inset-bottom))]";
 
   if (!authChecked) {
     return (
@@ -348,8 +353,10 @@ export default function PlatformShell({
   }
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(var(--platform-tint),var(--platform-tint)),radial-gradient(circle_at_10%_0%,var(--platform-glow-top),transparent_38%),radial-gradient(circle_at_90%_100%,var(--platform-glow-bottom),transparent_45%),var(--background)] text-foreground md:h-screen md:overflow-hidden">
-      <div className="mx-auto w-full max-w-6xl px-3 py-4 pb-[calc(4.75rem+env(safe-area-inset-bottom))] sm:px-5 sm:py-5 md:h-full md:pb-5">
+    <div className="min-h-dvh overscroll-y-none bg-[linear-gradient(var(--platform-tint),var(--platform-tint)),radial-gradient(circle_at_10%_0%,var(--platform-glow-top),transparent_38%),radial-gradient(circle_at_90%_100%,var(--platform-glow-bottom),transparent_45%),var(--background)] text-foreground md:h-screen md:overflow-hidden">
+      <div
+        className={`mx-auto w-full max-w-6xl px-3 py-4 ${mobileContentPadding} sm:px-5 sm:py-5 md:h-full md:pb-5`}
+      >
         <div className="grid min-w-0 items-start gap-4 md:h-full md:grid-cols-[11.5rem_minmax(0,1fr)] md:gap-0">
           <aside className="hidden min-w-0 space-y-5 md:sticky md:top-5 md:flex md:h-[calc(100vh-2.5rem)] md:flex-col md:self-start md:pt-5">
             <div className="space-y-2 px-1">
@@ -803,7 +810,6 @@ export default function PlatformShell({
                       await navigator.clipboard.writeText(exportNsec);
                       setCopiedNsec(true);
                       setTimeout(() => setCopiedNsec(false), 1500);
-                      toast.success("nsec copied");
                     } catch {
                       toast.error("Failed to copy nsec");
                     }
@@ -812,8 +818,12 @@ export default function PlatformShell({
                   size="sm"
                   type="button"
                 >
-                  <Copy className="h-3.5 w-3.5" />
-                  {copiedNsec ? "Copied" : "Copy nsec"}
+                  {copiedNsec ? (
+                    <Check className="h-3.5 w-3.5" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )}
+                  Copy nsec
                 </Button>
               </div>
             </div>

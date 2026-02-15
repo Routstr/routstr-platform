@@ -461,7 +461,6 @@ export default function NodeKeyWorkflows({
       setTimeout(() => {
         setCopiedValue((current) => (current === key ? null : current));
       }, 1400);
-      toast.success("Copied");
     } catch {
       toast.error("Unable to copy");
     }

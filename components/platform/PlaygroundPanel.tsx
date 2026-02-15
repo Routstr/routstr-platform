@@ -5,6 +5,7 @@ import { useObservableState } from "applesauce-react/hooks";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowUp,
+  Check,
   Code2,
   Copy,
   Loader2,
@@ -501,6 +502,9 @@ export default function PlaygroundPanel({
   const [showCodeSnippetsDialog, setShowCodeSnippetsDialog] = useState(false);
   const [selectedSnippetKind, setSelectedSnippetKind] =
     useState<CodeSnippetKind>("curl");
+  const [copiedSnippetKind, setCopiedSnippetKind] = useState<CodeSnippetKind | null>(
+    null
+  );
 
   const [selectedModelId, setSelectedModelId] = useState("");
   const [selectedApiKeyId, setSelectedApiKeyId] = useState("");
@@ -832,10 +836,15 @@ export default function PlaygroundPanel({
     codeSnippetOptions.find((option) => option.id === selectedSnippetKind) ||
     codeSnippetOptions[0];
 
-  const handleCopy = async (value: string) => {
+  const handleCopy = async (value: string, snippetKind: CodeSnippetKind) => {
     try {
       await navigator.clipboard.writeText(value);
-      toast.success("Copied to clipboard");
+      setCopiedSnippetKind(snippetKind);
+      setTimeout(() => {
+        setCopiedSnippetKind((current) =>
+          current === snippetKind ? null : current
+        );
+      }, 1400);
     } catch {
       toast.error("Unable to copy");
     }
@@ -1389,9 +1398,15 @@ export default function PlaygroundPanel({
                 size="sm"
                 type="button"
                 className="ml-auto"
-                onClick={() => void handleCopy(selectedCodeSnippet.snippet)}
+                onClick={() =>
+                  void handleCopy(selectedCodeSnippet.snippet, selectedCodeSnippet.id)
+                }
               >
-                <Copy className="h-3.5 w-3.5" />
+                {copiedSnippetKind === selectedCodeSnippet.id ? (
+                  <Check className="h-3.5 w-3.5" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
                 Copy
               </Button>
             </div>

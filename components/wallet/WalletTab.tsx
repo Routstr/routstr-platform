@@ -2,9 +2,11 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Check,
   CheckCircle2,
   Circle,
   ClipboardPaste,
+  Copy,
   Loader2,
 } from "lucide-react";
 import { MintQuoteState } from "@cashu/cashu-ts";
@@ -65,6 +67,7 @@ const WalletTab: React.FC<WalletTabProps> = ({
   const [sendAmount, setSendAmount] = useState("");
   const [isGeneratingSendToken, setIsGeneratingSendToken] = useState(false);
   const [generatedToken, setGeneratedToken] = useState("");
+  const [copiedToken, setCopiedToken] = useState(false);
   const [tokenToImport, setTokenToImport] = useState("");
   const [isImporting, setIsImporting] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
@@ -306,8 +309,8 @@ const WalletTab: React.FC<WalletTabProps> = ({
   const copyTokenToClipboard = () => {
     if (!generatedToken) return;
     void navigator.clipboard.writeText(generatedToken);
-    setSuccessMessage("Token copied to clipboard");
-    setTimeout(() => setSuccessMessage(""), 3000);
+    setCopiedToken(true);
+    setTimeout(() => setCopiedToken(false), 1400);
   };
 
   const handleCancel = () => {
@@ -752,6 +755,11 @@ const WalletTab: React.FC<WalletTabProps> = ({
                             size="xs"
                             type="button"
                           >
+                            {copiedToken ? (
+                              <Check className="h-3.5 w-3.5" />
+                            ) : (
+                              <Copy className="h-3.5 w-3.5" />
+                            )}
                             Copy
                           </Button>
                         </div>
