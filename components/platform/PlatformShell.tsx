@@ -92,7 +92,7 @@ const TAB_META: Record<
 > = {
   home: {
     title: "Home",
-    description: "Setup status and key health for your active endpoint.",
+    description: "Overview and quick actions for your active endpoint.",
   },
   nodes: {
     title: "Nodes",

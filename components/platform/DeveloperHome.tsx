@@ -172,11 +172,7 @@ export default function DeveloperHome({ baseUrl }: { baseUrl: string }) {
       typeof keyData.balance === "number" && keyData.balance > 0 && !keyData.isInvalid
   );
 
-  const heroSummary = !hasEndpointKey
-    ? "Add an API key for this endpoint to start."
-    : !hasFundedEndpointKey
-      ? "A key exists, but balance is empty. Top up before sending requests."
-      : "Setup is ready. Continue in Playground.";
+  const heroSummary = "Overview and quick actions for your active endpoint.";
 
   const primaryActionLabel = !hasEndpointKey
     ? "Create API key"
