@@ -532,7 +532,7 @@ export default function PlatformShell({
           </section>
         </div>
       </div>
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-4 pb-[calc(0.95rem+env(safe-area-inset-bottom))] md:hidden">
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-4 pb-[calc(0.35rem+env(safe-area-inset-bottom))] md:hidden">
         <nav
           className="pointer-events-auto mx-auto grid w-full max-w-[34rem] gap-2 rounded-[1.5rem] border border-border/65 bg-background/80 p-2.5 shadow-[0_-16px_36px_-22px_rgba(0,0,0,0.9)] backdrop-blur-2xl supports-[backdrop-filter]:bg-background/72"
           style={{ gridTemplateColumns: `repeat(${tabs.length + 1}, minmax(0, 1fr))` }}
