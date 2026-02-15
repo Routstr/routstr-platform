@@ -123,16 +123,12 @@ const WalletTab: React.FC<WalletTabProps> = ({
       setSuccessMessage,
       setShowInvoiceModal,
       setMintQuote,
-      setMintInvoice,
-      countdown,
-      setCountdown
+      setMintInvoice
     );
   }, [
     hookCheckMintQuote,
     isAutoChecking,
     mintAmount,
-    countdown,
-    setCountdown,
   ]);
 
   const createMintQuote = async (amountOverride?: number) => {
@@ -347,7 +343,6 @@ const WalletTab: React.FC<WalletTabProps> = ({
       checkMintQuote,
       isAutoChecking,
       setIsAutoChecking,
-      countdown,
       setCountdown
     );
 
@@ -358,7 +353,6 @@ const WalletTab: React.FC<WalletTabProps> = ({
     checkMintQuote,
     isAutoChecking,
     setupAutoRefresh,
-    countdown,
   ]);
 
   const popularAmounts = [100, 500, 1000];

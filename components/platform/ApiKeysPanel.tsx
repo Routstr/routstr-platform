@@ -93,6 +93,9 @@ const API_KEYS_SYNC_D_TAG = "routstr-chat-api-keys-v1";
 const FALLBACK_MINT_URL = "https://mint.minibits.cash/Bitcoin";
 const ACTIVE_MINT_STORAGE_KEY = "platform_active_mint_url";
 type MintUnit = "sat" | "msat";
+type CreateTokenOptions = {
+  strictPreferredMint?: boolean;
+};
 
 const DEFAULT_SYNC_RELAYS = [
   "wss://relay.routstr.com",
@@ -347,11 +350,37 @@ function readStoredActiveMint(): string {
   return normalizeMintUrl(localStorage.getItem(ACTIVE_MINT_STORAGE_KEY) || "");
 }
 
+async function getMintBalanceSats(mintUrl: string): Promise<number> {
+  const normalizedMint = normalizeMintUrl(mintUrl);
+  if (!normalizedMint) return 0;
+
+  const proofsForMint = getProofsForMint(
+    readCashuProofs() as WalletProof[],
+    normalizedMint
+  );
+  if (!Array.isArray(proofsForMint) || proofsForMint.length === 0) {
+    return 0;
+  }
+
+  const rawBalance = sumProofsBalanceSats(proofsForMint);
+  if (!Number.isFinite(rawBalance) || rawBalance <= 0) {
+    return 0;
+  }
+
+  try {
+    const { unit } = await createWalletForMint(normalizedMint);
+    return unit === "msat" ? rawBalance / 1000 : rawBalance;
+  } catch {
+    return rawBalance;
+  }
+}
+
 async function createTokenFromBalance(
   amountSats: number,
   nodeMints: string[],
   preferredMint: string,
-  transactionMessage: string
+  transactionMessage: string,
+  options: CreateTokenOptions = {}
 ): Promise<{ token: string }> {
   const initialProofs = readCashuProofs() as WalletProof[];
   if (!Array.isArray(initialProofs) || initialProofs.length === 0) {
@@ -381,21 +410,41 @@ async function createTokenFromBalance(
 
   const nodeMintSet = new Set(sortedNodeMints);
   const hasNodeMintHints = nodeMintSet.size > 0;
-  const baseCandidates = Array.from(
-    new Set(
-      [
-        normalizeMintUrl(preferredMint),
-        ...sortedWalletMints,
-        normalizeMintUrl(FALLBACK_MINT_URL),
-      ].filter(Boolean)
-    )
-  );
-  const candidates = hasNodeMintHints
-    ? [
-        ...baseCandidates.filter((mint) => nodeMintSet.has(mint)),
-        ...baseCandidates.filter((mint) => !nodeMintSet.has(mint)),
-      ]
-    : baseCandidates;
+  const normalizedPreferredMint = normalizeMintUrl(preferredMint);
+  const strictPreferredMint = options.strictPreferredMint === true;
+
+  if (strictPreferredMint && !normalizedPreferredMint) {
+    throw new Error("No active mint selected");
+  }
+
+  if (
+    strictPreferredMint &&
+    hasNodeMintHints &&
+    normalizedPreferredMint &&
+    !nodeMintSet.has(normalizedPreferredMint)
+  ) {
+    throw new Error("Active mint is not supported by the selected node");
+  }
+
+  const baseCandidates = strictPreferredMint
+    ? [normalizedPreferredMint]
+    : Array.from(
+        new Set(
+          [
+            normalizedPreferredMint,
+            ...sortedWalletMints,
+            normalizeMintUrl(FALLBACK_MINT_URL),
+          ].filter(Boolean)
+        )
+      );
+  const candidates = strictPreferredMint
+    ? baseCandidates
+    : hasNodeMintHints
+      ? [
+          ...baseCandidates.filter((mint) => nodeMintSet.has(mint)),
+          ...baseCandidates.filter((mint) => !nodeMintSet.has(mint)),
+        ]
+      : baseCandidates;
 
   if (candidates.length === 0) {
     throw new Error("No eligible mint found for wallet balance");
@@ -723,20 +772,23 @@ export default function ApiKeysPanel({
     normalizedBaseUrl,
   ]);
   const [selectedAddBaseUrl, setSelectedAddBaseUrl] = useState(normalizedBaseUrl);
+  const [selectedCreateBaseUrl, setSelectedCreateBaseUrl] = useState(normalizedBaseUrl);
 
   const [storedApiKeys, setStoredApiKeys] = useState<StoredApiKey[]>([]);
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+  const [createApiLabel, setCreateApiLabel] = useState("");
+  const [createApiAmount, setCreateApiAmount] = useState("");
   const [manualApiLabel, setManualApiLabel] = useState("");
   const [manualApiKey, setManualApiKey] = useState("");
 
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showInlineCreateForm, setShowInlineCreateForm] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showTopupDialog, setShowTopupDialog] = useState(false);
-  const [showLightningWorkflowDialog, setShowLightningWorkflowDialog] = useState(false);
   const [showChildWorkflowDialog, setShowChildWorkflowDialog] = useState(false);
-  const [activateCreateWorkflowSignal, setActivateCreateWorkflowSignal] = useState(0);
 
   const [keyToDelete, setKeyToDelete] = useState<StoredApiKey | null>(null);
   const [keyToTopup, setKeyToTopup] = useState<StoredApiKey | null>(null);
@@ -751,6 +803,11 @@ export default function ApiKeysPanel({
   const [isDeletingKey, setIsDeletingKey] = useState<string | null>(null);
   const [isTopupKey, setIsTopupKey] = useState<string | null>(null);
   const [isRefundingKey, setIsRefundingKey] = useState<string | null>(null);
+  const [isCreatingKey, setIsCreatingKey] = useState(false);
+
+  const [activeMintUrl, setActiveMintUrl] = useState("");
+  const [activeMintBalanceSats, setActiveMintBalanceSats] = useState<number | null>(null);
+  const [isReadingMintBalance, setIsReadingMintBalance] = useState(false);
 
   const getKeyBase = (keyData: StoredApiKey): string => {
     return getKeyBaseUrl(keyData, normalizedBaseUrl);
@@ -899,6 +956,11 @@ export default function ApiKeysPanel({
         if (normalized && finalList.includes(normalized)) return normalized;
         return finalList[0] || normalizedBaseUrl;
       });
+      setSelectedCreateBaseUrl((prev) => {
+        const normalized = normalizeBaseUrl(prev);
+        if (normalized && finalList.includes(normalized)) return normalized;
+        return finalList[0] || normalizedBaseUrl;
+      });
     };
 
     void fetchProviders();
@@ -912,6 +974,48 @@ export default function ApiKeysPanel({
     return storedApiKeys.reduce((sum, key) => sum + (key.balance || 0) / 1000, 0);
   }, [storedApiKeys]);
   const showSyncSkeleton = isSyncBootstrapping && storedApiKeys.length === 0;
+
+  useEffect(() => {
+    if (showSyncSkeleton) return;
+    if (storedApiKeys.length === 0) {
+      setShowInlineCreateForm(true);
+      return;
+    }
+    setShowInlineCreateForm(false);
+  }, [showSyncSkeleton, storedApiKeys.length]);
+
+  useEffect(() => {
+    if (!(showInlineCreateForm || showCreateDialog || showTopupDialog)) return;
+    let cancelled = false;
+
+    const loadActiveMintBalance = async () => {
+      const mint = readStoredActiveMint();
+      if (cancelled) return;
+      setActiveMintUrl(mint);
+      if (!mint) {
+        setActiveMintBalanceSats(null);
+        return;
+      }
+
+      setIsReadingMintBalance(true);
+      try {
+        const balance = await getMintBalanceSats(mint);
+        if (!cancelled) {
+          setActiveMintBalanceSats(balance);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsReadingMintBalance(false);
+        }
+      }
+    };
+
+    void loadActiveMintBalance();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showInlineCreateForm, showCreateDialog, showTopupDialog]);
 
   const toggleExpanded = (keyId: string) => {
     setExpandedKeys((prev) => {
@@ -1109,6 +1213,90 @@ export default function ApiKeysPanel({
     }
   };
 
+  const confirmCreateApiKey = async () => {
+    const amount = Number.parseInt(createApiAmount, 10);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Please enter a valid amount for the API key.");
+      return;
+    }
+
+    const createBase = normalizeBaseUrl(selectedCreateBaseUrl) || normalizedBaseUrl;
+    const activeMint = readStoredActiveMint();
+    if (!activeMint) {
+      toast.error("No active mint selected");
+      return;
+    }
+
+    setIsCreatingKey(true);
+    try {
+      const availableOnActiveMint = await getMintBalanceSats(activeMint);
+      if (amount > Math.floor(availableOnActiveMint)) {
+        toast.error(
+          `Amount exceeds active mint balance (${Math.floor(availableOnActiveMint)} sats).`
+        );
+        return;
+      }
+
+      const nodeMints = await fetchAcceptedMints(createBase);
+      const { token } = await createTokenFromBalance(
+        amount,
+        nodeMints,
+        activeMint,
+        "Spent wallet balance for API key creation",
+        { strictPreferredMint: true }
+      );
+
+      const response = await fetch(`${createBase}v1/wallet/info`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        let message = "Failed to fetch API key from wallet endpoint";
+        try {
+          const errorData = await response.json();
+          if (typeof errorData?.detail === "string" && errorData.detail.trim()) {
+            message = errorData.detail;
+          } else if (
+            typeof errorData?.detail?.error?.message === "string" &&
+            errorData.detail.error.message.trim()
+          ) {
+            message = errorData.detail.error.message;
+          }
+        } catch {
+          // keep fallback message
+        }
+        throw new Error(message);
+      }
+
+      const payload = (await response.json()) as {
+        api_key?: string;
+        apiKey?: string;
+      };
+      const apiKey = String(payload.api_key || payload.apiKey || "").trim();
+      if (!apiKey) {
+        throw new Error("API key response did not include an api_key");
+      }
+
+      await upsertKeyFromWorkflow(
+        createBase,
+        apiKey,
+        createApiLabel.trim() || "Unnamed"
+      );
+
+      setCreateApiAmount("");
+      setCreateApiLabel("");
+      setShowCreateDialog(false);
+      setShowInlineCreateForm(false);
+      toast.success("API key created");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create API key");
+    } finally {
+      setIsCreatingKey(false);
+    }
+  };
+
   const topupKey = async () => {
     if (!keyToTopup) {
       return;
@@ -1124,13 +1312,27 @@ export default function ApiKeysPanel({
     setIsTopupKey(topupId);
     try {
       const base = getKeyBase(keyToTopup);
+      const activeMint = readStoredActiveMint();
+      if (!activeMint) {
+        toast.error("No active mint selected");
+        return;
+      }
+
+      const availableOnActiveMint = await getMintBalanceSats(activeMint);
+      if (amount > Math.floor(availableOnActiveMint)) {
+        toast.error(
+          `Amount exceeds active mint balance (${Math.floor(availableOnActiveMint)} sats).`
+        );
+        return;
+      }
+
       const nodeMints = await fetchAcceptedMints(base);
-      const preferredMint = readStoredActiveMint();
       const { token } = await createTokenFromBalance(
         amount,
         nodeMints,
-        preferredMint,
-        "Spent wallet balance for API key top-up"
+        activeMint,
+        "Spent wallet balance for API key top-up",
+        { strictPreferredMint: true }
       );
 
       const response = await fetch(
@@ -1208,6 +1410,72 @@ export default function ApiKeysPanel({
     await persistKeys(updated);
   };
 
+  const activeMintDisplay = activeMintUrl
+    ? activeMintUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")
+    : "No active mint selected";
+  const activeMintBalanceDisplay =
+    activeMintBalanceSats === null
+      ? "N/A"
+      : `${Math.floor(activeMintBalanceSats).toLocaleString()} sats`;
+
+  const renderCreateKeyFields = () => (
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">
+        Create a key by spending from your active wallet mint.
+      </p>
+      <div className="rounded-lg border border-border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
+        <div className="font-medium text-foreground/90">{activeMintDisplay}</div>
+        <div className="mt-0.5">
+          Available: {isReadingMintBalance ? "Loading..." : activeMintBalanceDisplay}
+        </div>
+      </div>
+      <Input
+        placeholder="API key label (optional)"
+        value={createApiLabel}
+        onChange={(event) => setCreateApiLabel(event.target.value)}
+      />
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          inputMode="numeric"
+          min={1}
+          step={1}
+          placeholder="Amount in sats"
+          value={createApiAmount}
+          onChange={(event) => setCreateApiAmount(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            void confirmCreateApiKey();
+          }}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={activeMintBalanceSats === null || activeMintBalanceSats <= 0}
+          onClick={() =>
+            setCreateApiAmount(String(Math.max(0, Math.floor(activeMintBalanceSats || 0))))
+          }
+        >
+          Max
+        </Button>
+      </div>
+      <Select value={selectedCreateBaseUrl} onValueChange={setSelectedCreateBaseUrl}>
+        <SelectTrigger className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {availableBaseUrls.map((url) => (
+            <SelectItem key={`create-${url}`} value={url}>
+              {url}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <Card className="gap-0 space-y-4 p-4">
@@ -1240,8 +1508,11 @@ export default function ApiKeysPanel({
       <div className="flex flex-wrap gap-2">
         <Button
           onClick={() => {
-            setShowLightningWorkflowDialog(true);
-            setActivateCreateWorkflowSignal((current) => current + 1);
+            if (storedApiKeys.length > 0) {
+              setShowCreateDialog(true);
+              return;
+            }
+            setShowInlineCreateForm(true);
           }}
           variant="outline"
           type="button"
@@ -1266,6 +1537,30 @@ export default function ApiKeysPanel({
         </Button>
       </div>
 
+      {showInlineCreateForm && storedApiKeys.length === 0 && !showSyncSkeleton ? (
+        <Card className="gap-0 space-y-4 p-4">
+          <h3 className="text-base font-semibold text-foreground">Create Your First API Key</h3>
+          {renderCreateKeyFields()}
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setShowInlineCreateForm(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void confirmCreateApiKey()}
+              disabled={isCreatingKey || isSyncBootstrapping}
+            >
+              {isCreatingKey ? "Creating..." : "Create"}
+            </Button>
+          </div>
+        </Card>
+      ) : null}
+
       {showSyncSkeleton ? (
         <div
           className="space-y-3"
@@ -1288,11 +1583,11 @@ export default function ApiKeysPanel({
             </div>
           ))}
         </div>
-      ) : storedApiKeys.length === 0 ? (
+      ) : storedApiKeys.length === 0 && !showInlineCreateForm ? (
         <div className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">
           No API keys yet. Start with `Create Key` or import one with `Add Existing Key`.
         </div>
-      ) : (
+      ) : storedApiKeys.length === 0 ? null : (
         <div className="space-y-3">
           {storedApiKeys.map((keyData) => {
             const keyId = getKeyId(keyData);
@@ -1497,6 +1792,34 @@ export default function ApiKeysPanel({
       )}
 
       <SettingsDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        title="Create API Key"
+      >
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold text-foreground">Create API Key</h3>
+          {renderCreateKeyFields()}
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setShowCreateDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void confirmCreateApiKey()}
+              disabled={isCreatingKey || isSyncBootstrapping}
+            >
+              {isCreatingKey ? "Creating..." : "Confirm"}
+            </Button>
+          </div>
+        </div>
+      </SettingsDialog>
+
+      <SettingsDialog
         open={showAddDialog}
         onOpenChange={setShowAddDialog}
         title="Add Existing API Key"
@@ -1545,27 +1868,6 @@ export default function ApiKeysPanel({
           </div>
         </div>
       </SettingsDialog>
-
-      <Dialog open={showLightningWorkflowDialog} onOpenChange={setShowLightningWorkflowDialog}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader className="sr-only">
-            <DialogTitle>Lightning Key Workflow</DialogTitle>
-            <DialogDescription>
-              Create, top up, and recover API keys.
-            </DialogDescription>
-          </DialogHeader>
-          <NodeKeyWorkflows
-            defaultBaseUrl={normalizedBaseUrl}
-            availableBaseUrls={availableBaseUrls}
-            storedApiKeys={storedApiKeys}
-            onUpsertKey={upsertKeyFromWorkflow}
-            onCreateSuccess={() => setShowLightningWorkflowDialog(false)}
-            activateCreateSignal={activateCreateWorkflowSignal}
-            showChildSection={false}
-            minimalLayout
-          />
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={showChildWorkflowDialog} onOpenChange={setShowChildWorkflowDialog}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -1657,15 +1959,34 @@ export default function ApiKeysPanel({
               Add balance to <span className="font-medium">{keyToTopup.label || "Unnamed"}</span>{" "}
               using wallet balance.
             </p>
-            <Input
-              type="number"
-              inputMode="numeric"
-              min={1}
-              step={1}
-              placeholder="Amount in sats"
-              value={topupAmount}
-              onChange={(event) => setTopupAmount(event.target.value)}
-            />
+            <div className="rounded-lg border border-border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
+              <div className="font-medium text-foreground/90">{activeMintDisplay}</div>
+              <div className="mt-0.5">
+                Available: {isReadingMintBalance ? "Loading..." : activeMintBalanceDisplay}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                step={1}
+                placeholder="Amount in sats"
+                value={topupAmount}
+                onChange={(event) => setTopupAmount(event.target.value)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={activeMintBalanceSats === null || activeMintBalanceSats <= 0}
+                onClick={() =>
+                  setTopupAmount(String(Math.max(0, Math.floor(activeMintBalanceSats || 0))))
+                }
+              >
+                Max
+              </Button>
+            </div>
             <div className="flex justify-end gap-2">
               <Button
                 onClick={() => {

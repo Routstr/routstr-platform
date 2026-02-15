@@ -243,9 +243,7 @@ export function useWalletOperations({
       setSuccessMessage: (message: string) => void,
       setShowInvoiceModal: (show: boolean) => void,
       setMintQuote: (quote: MintQuoteResponse | null) => void,
-      setMintInvoice: (invoice: string) => void,
-      _countdown: number,
-      _setCountdown: (countdown: number) => void
+      setMintInvoice: (invoice: string) => void
     ) => {
       if (!cashuWalletRef.current || !mintQuoteRef.current) return;
 
@@ -823,7 +821,6 @@ export function useWalletOperations({
       checkQuote: () => Promise<void>,
       _isAutoChecking: boolean,
       setIsAutoChecking: (checking: boolean) => void,
-      _countdown: number,
       setCountdown: (countdown: number | ((prev: number) => number)) => void
     ) => {
       if (checkIntervalRef.current) {
