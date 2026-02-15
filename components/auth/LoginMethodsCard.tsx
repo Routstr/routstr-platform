@@ -260,7 +260,7 @@ export default function LoginMethodsCard({
                 setNsecCopied(true);
                 setTimeout(() => setNsecCopied(false), 2000);
               }}
-              variant="secondary"
+              variant="outline"
               size="sm"
               className="shrink-0"
               type="button"
@@ -284,7 +284,7 @@ export default function LoginMethodsCard({
                 setSignupStep("initial");
                 setGeneratedAccount(null);
               }}
-              variant="secondary"
+              variant="outline"
               size="sm"
               className="flex-1"
               type="button"
@@ -307,7 +307,7 @@ export default function LoginMethodsCard({
           <p className="text-sm font-medium text-foreground">Create new identity</p>
           <Button
             onClick={createNewIdentity}
-            variant="secondary"
+            variant="outline"
             size="sm"
             type="button"
           >
@@ -322,7 +322,7 @@ export default function LoginMethodsCard({
           <div className="flex flex-nowrap gap-1.5 overflow-x-auto pb-1">
             <Button
               onClick={() => setActiveMethod("nsec")}
-              variant={activeMethod === "nsec" ? "secondary" : "ghost"}
+              variant={activeMethod === "nsec" ? "outline" : "ghost"}
               size="sm"
               type="button"
             >
@@ -334,7 +334,7 @@ export default function LoginMethodsCard({
               <Button
                 onClick={handleExtensionLogin}
                 disabled={isConnectingExtension}
-                variant="secondary"
+                variant="outline"
                 size="sm"
                 type="button"
               >
@@ -360,7 +360,7 @@ export default function LoginMethodsCard({
                   void handleQrConnect();
                 }
               }}
-              variant={activeMethod === "qr" ? "secondary" : "ghost"}
+              variant={activeMethod === "qr" ? "outline" : "ghost"}
               size="sm"
               type="button"
             >
@@ -372,7 +372,7 @@ export default function LoginMethodsCard({
               onClick={() =>
                 setActiveMethod((prev) => (prev === "bunker" ? "nsec" : "bunker"))
               }
-              variant={activeMethod === "bunker" ? "secondary" : "ghost"}
+              variant={activeMethod === "bunker" ? "outline" : "ghost"}
               size="sm"
               type="button"
             >
@@ -423,7 +423,7 @@ export default function LoginMethodsCard({
                 <Button
                   onClick={handleKeyLogin}
                   disabled={isLoggingIn || !loginNsec.trim()}
-                  variant="secondary"
+                  variant="outline"
                   size="sm"
                   className="shrink-0"
                   type="button"
@@ -471,7 +471,7 @@ export default function LoginMethodsCard({
                 <Button
                   onClick={() => void handleBunkerConnect()}
                   disabled={!bunkerUrl.trim() || isConnectingBunker}
-                  variant="secondary"
+                  variant="outline"
                   size="sm"
                   className="shrink-0"
                   type="button"
@@ -509,7 +509,7 @@ export default function LoginMethodsCard({
                 <div className="flex items-center justify-center py-2">
                   <Button
                     onClick={() => void handleQrConnect()}
-                    variant="secondary"
+                    variant="outline"
                     size="sm"
                     type="button"
                     disabled={isConnectingQR}

@@ -43,7 +43,7 @@ export default function BitcoinConnectStatusRow({
       ) : (
         <Button
           onClick={onConnect}
-          variant="secondary"
+          variant="outline"
           size="sm"
           type="button"
         >

@@ -1088,8 +1088,8 @@ export default function PlaygroundPanel({
   }, [chatMessages, runState.status]);
 
   return (
-    <div className="min-w-0 space-y-3">
-      <section className="space-y-3">
+    <div className="min-w-0 space-y-3 md:flex md:h-full md:min-h-0 md:flex-col">
+      <section className="space-y-3 md:flex md:min-h-0 md:flex-1 md:flex-col">
         <Card className="gap-0 p-3">
           <div className="grid min-w-0 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
             <label className="space-y-1">
@@ -1129,7 +1129,7 @@ export default function PlaygroundPanel({
                 />
               ) : (
                 <Button
-                  variant="secondary"
+                  variant="outline"
                   size="sm"
                   type="button"
                   onClick={navigateToApiKeysTab}
@@ -1141,7 +1141,7 @@ export default function PlaygroundPanel({
             </label>
 
             <Button
-              variant="secondary"
+              variant="outline"
               size="sm"
               type="button"
               onClick={() => setShowRequestSettingsDialog(true)}
@@ -1159,7 +1159,7 @@ export default function PlaygroundPanel({
           ) : null}
         </Card>
 
-        <Card className="gap-0 h-[58svh] min-h-[18rem] overflow-hidden p-0 sm:h-[68vh] sm:min-h-[24rem] xl:h-[calc(100vh-13rem)] xl:min-h-0">
+        <Card className="gap-0 min-h-[18rem] overflow-hidden p-0 sm:min-h-[24rem] md:min-h-0 md:flex-1">
           <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2.5 sm:px-4">
             <h3 className="text-base font-semibold tracking-tight">Chat</h3>
             <div className="flex items-center gap-2">
@@ -1387,7 +1387,7 @@ export default function PlaygroundPanel({
                 ))}
               </TabsList>
               <Button
-                variant="secondary"
+                variant="outline"
                 size="sm"
                 type="button"
                 className="ml-auto"

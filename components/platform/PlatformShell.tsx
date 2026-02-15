@@ -113,6 +113,30 @@ const TAB_META: Record<
   },
 };
 
+const THEME_TABS = [
+  { value: "dark", label: "Dark", icon: Moon },
+  { value: "red", label: "Red", icon: Flame },
+  { value: "light", label: "Light", icon: Sun },
+  { value: "system", label: "System", icon: Monitor },
+] as const;
+
+type PlatformTheme = (typeof THEME_TABS)[number]["value"];
+
+function isPlatformTheme(value: unknown): value is PlatformTheme {
+  return (
+    value === "dark" ||
+    value === "red" ||
+    value === "light" ||
+    value === "system"
+  );
+}
+
+function readStoredPlatformTheme(): PlatformTheme {
+  if (typeof window === "undefined") return "system";
+  const savedTheme = window.localStorage.getItem("theme");
+  return isPlatformTheme(savedTheme) ? savedTheme : "system";
+}
+
 function resolveAccountNsec(account: unknown): string | null {
   const hexToBytes = (hex: string): Uint8Array | null => {
     const normalized = hex.trim().toLowerCase();
@@ -156,7 +180,12 @@ export default function PlatformShell({
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const isGuestMode = allowUnauthenticated && !isAuthenticated;
-  const [themeMounted, setThemeMounted] = useState(false);
+  const [themeMounted, setThemeMounted] = useState(
+    () => typeof window !== "undefined",
+  );
+  const [lastKnownTheme, setLastKnownTheme] = useState<PlatformTheme>(
+    () => readStoredPlatformTheme(),
+  );
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showSignOutDialog, setShowSignOutDialog] = useState(false);
   const [showMobileMoreDialog, setShowMobileMoreDialog] = useState(false);
@@ -205,6 +234,12 @@ export default function PlatformShell({
   useEffect(() => {
     setThemeMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (isPlatformTheme(theme)) {
+      setLastKnownTheme(theme);
+    }
+  }, [theme]);
 
   const tabs: Array<{
     id: PlatformTab;
@@ -263,17 +298,11 @@ export default function PlatformShell({
     setShowSignOutDialog(false);
     await logout();
   };
-  const themeTabs = [
-    { value: "dark", label: "Dark", icon: Moon },
-    { value: "red", label: "Red", icon: Flame },
-    { value: "light", label: "Light", icon: Sun },
-    { value: "system", label: "System", icon: Monitor },
-  ] as const;
   const activeTheme = themeMounted
-    ? themeTabs.some((item) => item.value === theme)
+    ? isPlatformTheme(theme)
       ? theme
-      : "system"
-    : "system";
+      : lastKnownTheme
+    : lastKnownTheme;
   const activeAccount = useObservableState(manager.active$);
   const exportNsec = useMemo(
     () => resolveAccountNsec(activeAccount),
@@ -299,7 +328,7 @@ export default function PlatformShell({
   }
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(var(--platform-tint),var(--platform-tint)),radial-gradient(circle_at_10%_0%,var(--platform-glow-top),transparent_38%),radial-gradient(circle_at_90%_100%,var(--platform-glow-bottom),transparent_45%),var(--background)] text-foreground md:h-screen md:overflow-hidden">
+    <div className="min-h-screen bg-[linear-gradient(var(--platform-tint),var(--platform-tint)),radial-gradient(circle_at_10%_0%,var(--platform-glow-top),transparent_38%),radial-gradient(circle_at_90%_100%,var(--platform-glow-bottom),transparent_45%),var(--background)] text-foreground">
       <div className="mx-auto w-full max-w-6xl px-3 py-4 pb-[calc(4.75rem+env(safe-area-inset-bottom))] sm:px-5 sm:py-5 md:h-full md:pb-5">
         <div className="grid min-w-0 items-start gap-4 md:h-full md:grid-cols-[11.5rem_minmax(0,1fr)] md:gap-0">
           <aside className="hidden min-w-0 space-y-5 md:sticky md:top-5 md:flex md:h-[calc(100vh-2.5rem)] md:flex-col md:self-start md:pt-5">
@@ -325,7 +354,7 @@ export default function PlatformShell({
                   return (
                     <Button
                       key={tab.id}
-                      variant={isActive ? "secondary" : "ghost"}
+                      variant={isActive ? "outline" : "ghost"}
                       size="lg"
                       className="w-full justify-start"
                       onClick={() => navigateToTab(tab.id)}
@@ -392,7 +421,7 @@ export default function PlatformShell({
                 ) : (
                   <Button
                     onClick={() => onRequestLogin?.()}
-                    variant="secondary"
+                    variant="outline"
                     className="w-full justify-start"
                     type="button"
                   >
@@ -408,7 +437,7 @@ export default function PlatformShell({
                     }
                   >
                     <TabsList>
-                      {themeTabs.map((themeOption) => {
+                      {THEME_TABS.map((themeOption) => {
                         const ThemeIcon = themeOption.icon;
                         return (
                           <TabsTrigger
@@ -440,7 +469,7 @@ export default function PlatformShell({
           >
             <div
               className={`space-y-5 ${
-                currentTab === "nodes"
+                currentTab === "nodes" || currentTab === "playground"
                   ? "md:flex md:h-full md:min-h-0 md:flex-col"
                   : ""
               }`}
@@ -461,10 +490,12 @@ export default function PlatformShell({
                 />
               )}
               {currentTab === "playground" && (
-                <PlaygroundPanel
-                  baseUrl={baseUrl}
-                  onBaseUrlChange={handleBaseUrlChange}
-                />
+                <div className="md:min-h-0 md:flex-1">
+                  <PlaygroundPanel
+                    baseUrl={baseUrl}
+                    onBaseUrlChange={handleBaseUrlChange}
+                  />
+                </div>
               )}
               {currentTab === "nodes" && (
                 <div className="md:min-h-0 md:flex-1">
@@ -629,7 +660,7 @@ export default function PlatformShell({
                   Account
                 </p>
                 <Button
-                  variant="secondary"
+                  variant="outline"
                   size="lg"
                   className="h-11 w-full justify-start"
                   onClick={() => {
@@ -647,13 +678,12 @@ export default function PlatformShell({
             <section className="space-y-2.5">
               <p className="text-xs font-medium text-muted-foreground">Theme</p>
               <div className="grid grid-cols-2 gap-2">
-                {themeTabs.map((themeOption) => {
+                {THEME_TABS.map((themeOption) => {
                   const ThemeIcon = themeOption.icon;
-                  const isActiveTheme = activeTheme === themeOption.value;
                   return (
                     <Button
                       key={`mobile-theme-${themeOption.value}`}
-                      variant={isActiveTheme ? "secondary" : "outline"}
+                      variant="outline"
                       size="lg"
                       className="h-11 justify-start"
                       onClick={() => setTheme(themeOption.value)}
@@ -757,7 +787,7 @@ export default function PlatformShell({
                       toast.error("Failed to copy nsec");
                     }
                   }}
-                  variant="secondary"
+                  variant="outline"
                   size="sm"
                   type="button"
                 >

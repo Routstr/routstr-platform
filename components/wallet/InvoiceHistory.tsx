@@ -156,7 +156,7 @@ const InvoiceHistory: React.FC<InvoiceHistoryProps> = ({
               if (onCheckNow) void onCheckNow();
             }}
             disabled={isChecking || !onCheckNow}
-            variant="secondary"
+            variant="outline"
             size="sm"
             className="ml-auto"
             type="button"

@@ -159,7 +159,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
               onClick={() => {
                 void navigator.clipboard.writeText(mintInvoice);
               }}
-              variant="secondary"
+              variant="outline"
               className="flex-1"
               type="button"
             >
@@ -171,7 +171,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   void onPayWithWallet(mintInvoice);
                 }}
                 disabled={Boolean(isPayingWithWallet)}
-                variant="secondary"
+                variant="outline"
                 className="flex-1"
                 type="button"
               >

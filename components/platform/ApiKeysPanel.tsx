@@ -2,6 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  CashuMint,
+  CashuWallet,
+  CheckStateEnum,
+  getEncodedTokenV4,
+  type Proof as CashuProof,
+} from "@cashu/cashu-ts";
+import {
   Check,
   ChevronDown,
   ChevronUp,
@@ -18,6 +25,17 @@ import { SimplePool, type Event as NostrEvent, type EventTemplate } from "nostr-
 import { toast } from "sonner";
 import { useObservableState } from "applesauce-react/hooks";
 import { useAccountManager } from "@/components/providers/ClientProviders";
+import {
+  appendTransaction,
+  getProofsBalanceSats,
+  readCashuProofs,
+  writeCashuProofs,
+} from "@/lib/platformWallet";
+import {
+  annotateProofsWithMint,
+  getProofsForMint,
+  type WalletProof,
+} from "@/lib/nip60WalletSync";
 import { DEFAULT_BASE_URL } from "@/lib/utils";
 import { ModalShell } from "@/components/ui/ModalShell";
 import SettingsDialog from "@/components/ui/SettingsDialog";
@@ -32,7 +50,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -73,6 +90,10 @@ const NOSTR_APP_CONFIG_STORAGE_KEY = "nostr:app-config";
 const NOSTR_RELAYS_STORAGE_KEY = "nostr_relays";
 const API_KEYS_SYNC_KIND = 30078;
 const API_KEYS_SYNC_D_TAG = "routstr-chat-api-keys-v1";
+const FALLBACK_MINT_URL = "https://mint.minibits.cash/Bitcoin";
+const ACTIVE_MINT_STORAGE_KEY = "platform_active_mint_url";
+type MintUnit = "sat" | "msat";
+
 const DEFAULT_SYNC_RELAYS = [
   "wss://relay.routstr.com",
   "wss://nos.lol",
@@ -191,6 +212,279 @@ function normalizeBaseUrl(url: string): string {
   if (!trimmed) return "";
   const withProtocol = /^https?:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`;
   return withProtocol.endsWith("/") ? withProtocol : `${withProtocol}/`;
+}
+
+function normalizeMintUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+  const withProtocol = /^https?:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`;
+  return withProtocol.replace(/\/+$/, "");
+}
+
+function proofIdentity(proof: WalletProof): string {
+  if (typeof proof.secret === "string" && proof.secret.length > 0) {
+    return proof.secret;
+  }
+  return `${String(proof.id)}:${Number(proof.amount)}:${String(proof.C || "")}`;
+}
+
+function sumProofsBalanceSats(proofs: WalletProof[]): number {
+  return proofs.reduce((sum, proof) => sum + Number(proof.amount || 0), 0);
+}
+
+async function removeSpentProofsForMint(
+  wallet: CashuWallet,
+  proofsForMint: WalletProof[]
+): Promise<WalletProof[]> {
+  const proofStates = await wallet.checkProofsStates(proofsForMint as CashuProof[]);
+  if (!Array.isArray(proofStates) || proofStates.length === 0) {
+    return proofsForMint;
+  }
+
+  const spentProofIds = new Set<string>();
+  const remainingProofs: WalletProof[] = [];
+  proofsForMint.forEach((proof, index) => {
+    const state = proofStates[index]?.state;
+    if (state === CheckStateEnum.SPENT) {
+      spentProofIds.add(proofIdentity(proof));
+      return;
+    }
+    remainingProofs.push(proof);
+  });
+
+  if (spentProofIds.size === 0) {
+    return proofsForMint;
+  }
+
+  const currentProofs = readCashuProofs() as WalletProof[];
+  const nextProofs = currentProofs.filter(
+    (proof) => !spentProofIds.has(proofIdentity(proof))
+  );
+  writeCashuProofs(nextProofs);
+  return remainingProofs;
+}
+
+function encodeCashuTokenV4(
+  mintUrl: string,
+  unit: MintUnit,
+  proofs: CashuProof[]
+): string {
+  const normalizedProofs = proofs.map((proof) => ({
+    id: String(proof.id || ""),
+    amount: Number(proof.amount || 0),
+    secret: String(proof.secret || ""),
+    C: String(proof.C || ""),
+  }));
+
+  if (
+    normalizedProofs.some(
+      (proof) =>
+        !proof.id ||
+        !proof.secret ||
+        !proof.C ||
+        !Number.isFinite(proof.amount) ||
+        proof.amount <= 0
+    )
+  ) {
+    throw new Error("Mint returned invalid proofs for token generation");
+  }
+
+  return getEncodedTokenV4({
+    mint: mintUrl,
+    unit,
+    proofs: normalizedProofs,
+  });
+}
+
+async function createWalletForMint(
+  candidateMintUrl: string
+): Promise<{ wallet: CashuWallet; unit: MintUnit; preferredKeysetId?: string }> {
+  const mint = new CashuMint(candidateMintUrl);
+  const keysets = await mint.getKeySets();
+  const activeKeysets = keysets.keysets.filter((keyset) => keyset.active);
+  const msatKeyset = activeKeysets.find(
+    (keyset) => String(keyset.unit).toLowerCase() === "msat"
+  );
+  const satKeyset = activeKeysets.find(
+    (keyset) => String(keyset.unit).toLowerCase() === "sat"
+  );
+  const preferredUnit = msatKeyset ? "msat" : satKeyset ? "sat" : null;
+
+  if (!preferredUnit) {
+    const units = [...new Set(activeKeysets.map((keyset) => String(keyset.unit).toLowerCase()))];
+    throw new Error(
+      `Mint ${candidateMintUrl} has no active sat/msat keyset (units: ${
+        units.join(", ") || "none"
+      })`
+    );
+  }
+
+  const wallet = new CashuWallet(mint, { unit: preferredUnit });
+  await wallet.loadMint();
+  return {
+    wallet,
+    unit: preferredUnit,
+    preferredKeysetId: (preferredUnit === "msat" ? msatKeyset?.id : satKeyset?.id) || undefined,
+  };
+}
+
+async function fetchAcceptedMints(baseUrl: string): Promise<string[]> {
+  try {
+    const response = await fetch(`${baseUrl}v1/info`, {
+      cache: "no-store",
+    });
+    if (!response.ok) return [];
+    const payload = (await response.json()) as { mints?: string[] };
+    if (!Array.isArray(payload?.mints)) return [];
+    return payload.mints.map((mint) => normalizeMintUrl(mint)).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function readStoredActiveMint(): string {
+  if (typeof window === "undefined") return "";
+  return normalizeMintUrl(localStorage.getItem(ACTIVE_MINT_STORAGE_KEY) || "");
+}
+
+async function createTokenFromBalance(
+  amountSats: number,
+  nodeMints: string[],
+  preferredMint: string,
+  transactionMessage: string
+): Promise<{ token: string }> {
+  const initialProofs = readCashuProofs() as WalletProof[];
+  if (!Array.isArray(initialProofs) || initialProofs.length === 0) {
+    throw new Error("No wallet balance available");
+  }
+
+  const walletMintBalances = new Map<string, number>();
+  for (const proof of initialProofs) {
+    const mint = normalizeMintUrl(proof.mintUrl || "");
+    if (!mint) continue;
+    walletMintBalances.set(
+      mint,
+      (walletMintBalances.get(mint) || 0) + Number(proof.amount || 0)
+    );
+  }
+
+  const sortedWalletMints = Array.from(walletMintBalances.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([mint]) => mint);
+
+  const normalizedNodeMints = Array.from(
+    new Set(nodeMints.map((mint) => normalizeMintUrl(mint)).filter(Boolean))
+  );
+  const sortedNodeMints = normalizedNodeMints.sort(
+    (a, b) => (walletMintBalances.get(b) || 0) - (walletMintBalances.get(a) || 0)
+  );
+
+  const nodeMintSet = new Set(sortedNodeMints);
+  const hasNodeMintHints = nodeMintSet.size > 0;
+  const baseCandidates = Array.from(
+    new Set(
+      [
+        normalizeMintUrl(preferredMint),
+        ...sortedWalletMints,
+        normalizeMintUrl(FALLBACK_MINT_URL),
+      ].filter(Boolean)
+    )
+  );
+  const candidates = hasNodeMintHints
+    ? [
+        ...baseCandidates.filter((mint) => nodeMintSet.has(mint)),
+        ...baseCandidates.filter((mint) => !nodeMintSet.has(mint)),
+      ]
+    : baseCandidates;
+
+  if (candidates.length === 0) {
+    throw new Error("No eligible mint found for wallet balance");
+  }
+
+  let lastError: unknown = null;
+
+  for (const mint of candidates) {
+    try {
+      const { wallet, unit, preferredKeysetId } = await createWalletForMint(mint);
+      let proofsSnapshot = readCashuProofs() as WalletProof[];
+      let proofsForMint = getProofsForMint(proofsSnapshot, mint);
+      if (!Array.isArray(proofsForMint) || proofsForMint.length === 0) {
+        continue;
+      }
+      const amountInMintUnit = unit === "msat" ? amountSats * 1000 : amountSats;
+      const availableForMint = sumProofsBalanceSats(proofsForMint);
+      if (availableForMint < amountInMintUnit) {
+        continue;
+      }
+
+      const sendOptions = {
+        ...(preferredKeysetId ? { keysetId: preferredKeysetId } : {}),
+      };
+      let sendResult: Awaited<ReturnType<CashuWallet["send"]>>;
+      try {
+        sendResult = await wallet.send(amountInMintUnit, proofsForMint as CashuProof[], {
+          ...sendOptions,
+          includeFees: true,
+        });
+      } catch (firstSendError) {
+        const firstMessage =
+          firstSendError instanceof Error
+            ? firstSendError.message
+            : String(firstSendError);
+        if (
+          firstMessage.includes("Not enough funds available") ||
+          firstMessage.includes("Token already spent") ||
+          firstMessage.includes("Not enough balance to send")
+        ) {
+          proofsForMint = await removeSpentProofsForMint(wallet, proofsForMint);
+          if (proofsForMint.length === 0) {
+            throw new Error("Token already spent. Please sync wallet and retry.");
+          }
+          proofsSnapshot = readCashuProofs() as WalletProof[];
+          if (sumProofsBalanceSats(proofsForMint) < amountInMintUnit) {
+            throw new Error("Not enough funds on this mint after removing spent proofs");
+          }
+          sendResult = await wallet.send(amountInMintUnit, proofsForMint as CashuProof[], {
+            ...sendOptions,
+          });
+        } else {
+          throw firstSendError;
+        }
+      }
+
+      const sendProofs = (sendResult?.send || []) as CashuProof[];
+      const keepProofs = (sendResult?.keep || []) as CashuProof[];
+      if (sendProofs.length === 0) {
+        throw new Error("Unable to generate Cashu token");
+      }
+
+      const mintedProofIds = new Set(proofsForMint.map((proof) => proofIdentity(proof)));
+      const untouched = proofsSnapshot.filter(
+        (proof) => !mintedProofIds.has(proofIdentity(proof))
+      );
+      const keepWithMetadata = annotateProofsWithMint(keepProofs, mint);
+      writeCashuProofs([...untouched, ...keepWithMetadata]);
+
+      const nextBalance = getProofsBalanceSats();
+      appendTransaction({
+        type: "send",
+        amount: amountSats,
+        timestamp: Date.now(),
+        status: "success",
+        message: transactionMessage,
+        balance: nextBalance,
+      });
+
+      return { token: encodeCashuTokenV4(mint, unit, sendProofs) };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (lastError instanceof Error) {
+    throw new Error(lastError.message);
+  }
+  throw new Error("Insufficient wallet balance on available mints");
 }
 
 function shouldAllowHttp(url: string): boolean {
@@ -446,7 +740,7 @@ export default function ApiKeysPanel({
 
   const [keyToDelete, setKeyToDelete] = useState<StoredApiKey | null>(null);
   const [keyToTopup, setKeyToTopup] = useState<StoredApiKey | null>(null);
-  const [topupToken, setTopupToken] = useState("");
+  const [topupAmount, setTopupAmount] = useState("");
 
   const [editingLabelKey, setEditingLabelKey] = useState<string | null>(null);
   const [editingLabelValue, setEditingLabelValue] = useState("");
@@ -816,8 +1110,13 @@ export default function ApiKeysPanel({
   };
 
   const topupKey = async () => {
-    if (!keyToTopup || !topupToken.trim()) {
-      toast.error("Cashu token is required for top-up");
+    if (!keyToTopup) {
+      return;
+    }
+
+    const amount = Number.parseInt(topupAmount, 10);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Enter a valid amount in sats");
       return;
     }
 
@@ -825,8 +1124,17 @@ export default function ApiKeysPanel({
     setIsTopupKey(topupId);
     try {
       const base = getKeyBase(keyToTopup);
+      const nodeMints = await fetchAcceptedMints(base);
+      const preferredMint = readStoredActiveMint();
+      const { token } = await createTokenFromBalance(
+        amount,
+        nodeMints,
+        preferredMint,
+        "Spent wallet balance for API key top-up"
+      );
+
       const response = await fetch(
-        `${base}v1/wallet/topup?cashu_token=${encodeURIComponent(topupToken.trim())}`,
+        `${base}v1/wallet/topup?cashu_token=${encodeURIComponent(token)}`,
         {
           method: "POST",
           headers: {
@@ -842,7 +1150,7 @@ export default function ApiKeysPanel({
       }
 
       setShowTopupDialog(false);
-      setTopupToken("");
+      setTopupAmount("");
       await refreshSingleKey(keyToTopup);
       toast.success("Top-up complete");
     } catch (error) {
@@ -917,7 +1225,7 @@ export default function ApiKeysPanel({
           <Button
             onClick={refreshAllKeys}
             disabled={isRefreshingAll || isSyncBootstrapping || storedApiKeys.length === 0}
-            variant="secondary"
+            variant="outline"
             type="button"
           >
             <RefreshCw
@@ -935,7 +1243,7 @@ export default function ApiKeysPanel({
             setShowLightningWorkflowDialog(true);
             setActivateCreateWorkflowSignal((current) => current + 1);
           }}
-          variant="secondary"
+          variant="outline"
           type="button"
         >
           <Plus className="h-4 w-4" />
@@ -943,7 +1251,7 @@ export default function ApiKeysPanel({
         </Button>
         <Button
           onClick={() => setShowAddDialog(true)}
-          variant="secondary"
+          variant="outline"
           type="button"
         >
           <Key className="h-4 w-4" />
@@ -951,7 +1259,7 @@ export default function ApiKeysPanel({
         </Button>
         <Button
           onClick={() => setShowChildWorkflowDialog(true)}
-          variant="secondary"
+          variant="outline"
           type="button"
         >
           Child Keys
@@ -1097,7 +1405,7 @@ export default function ApiKeysPanel({
                       />
                       <Button
                         onClick={() => void handleCopy(keyData.key, keyId)}
-                        variant="secondary"
+                        variant="outline"
                         size="icon-sm"
                         type="button"
                         title="Copy API key"
@@ -1110,7 +1418,7 @@ export default function ApiKeysPanel({
                       </Button>
                       <Button
                         onClick={() => void refreshSingleKey(keyData)}
-                        variant="secondary"
+                        variant="outline"
                         size="sm"
                         type="button"
                         disabled={isRefreshingKey === keyId}
@@ -1128,9 +1436,10 @@ export default function ApiKeysPanel({
                       <Button
                         onClick={() => {
                           setKeyToTopup(keyData);
+                          setTopupAmount("");
                           setShowTopupDialog(true);
                         }}
-                        variant="secondary"
+                        variant="outline"
                         size="sm"
                         type="button"
                         disabled={keyData.isInvalid || isTopupKey === keyId}
@@ -1170,7 +1479,7 @@ export default function ApiKeysPanel({
                           setKeyToDelete(keyData);
                           setShowDeleteDialog(true);
                         }}
-                        variant="secondary"
+                        variant="outline"
                         size="sm"
                         type="button"
                         disabled={isDeletingKey === keyId}
@@ -1227,7 +1536,7 @@ export default function ApiKeysPanel({
             </Button>
             <Button
               onClick={() => void addExistingApiKey()}
-              variant="secondary"
+              variant="outline"
               disabled={isAdding || !manualApiKey.trim()}
               type="button"
             >
@@ -1307,7 +1616,7 @@ export default function ApiKeysPanel({
               </Button>
               <Button
                 onClick={() => void refundAndDeleteKey()}
-                variant="secondary"
+                variant="outline"
                 type="button"
                 disabled={isRefundingKey === getKeyId(keyToDelete)}
               >
@@ -1317,7 +1626,7 @@ export default function ApiKeysPanel({
               </Button>
               <Button
                 onClick={() => void deleteKey()}
-                variant="secondary"
+                variant="outline"
                 type="button"
                 disabled={isDeletingKey === getKeyId(keyToDelete)}
               >
@@ -1334,7 +1643,7 @@ export default function ApiKeysPanel({
         open={showTopupDialog && !!keyToTopup}
         onClose={() => {
           setShowTopupDialog(false);
-          setTopupToken("");
+          setTopupAmount("");
           setKeyToTopup(null);
         }}
         overlayClassName="bg-black/70 z-50 p-4"
@@ -1346,19 +1655,22 @@ export default function ApiKeysPanel({
             <h3 className="text-lg font-semibold text-foreground">Top Up API Key</h3>
             <p className="text-sm text-muted-foreground">
               Add balance to <span className="font-medium">{keyToTopup.label || "Unnamed"}</span>{" "}
-              using a Cashu token.
+              using wallet balance.
             </p>
-            <Textarea
-              placeholder="Cashu token"
-              value={topupToken}
-              onChange={(event) => setTopupToken(event.target.value)}
-              className="h-24 font-mono"
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              step={1}
+              placeholder="Amount in sats"
+              value={topupAmount}
+              onChange={(event) => setTopupAmount(event.target.value)}
             />
             <div className="flex justify-end gap-2">
               <Button
                 onClick={() => {
                   setShowTopupDialog(false);
-                  setTopupToken("");
+                  setTopupAmount("");
                   setKeyToTopup(null);
                 }}
                 variant="ghost"
@@ -1368,9 +1680,9 @@ export default function ApiKeysPanel({
               </Button>
               <Button
                 onClick={() => void topupKey()}
-                variant="secondary"
+                variant="outline"
                 type="button"
-                disabled={!topupToken.trim() || isTopupKey === getKeyId(keyToTopup)}
+                disabled={!topupAmount.trim() || isTopupKey === getKeyId(keyToTopup)}
               >
                 {isTopupKey === getKeyId(keyToTopup)
                   ? "Topping up..."

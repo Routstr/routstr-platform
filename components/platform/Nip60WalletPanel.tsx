@@ -1,13 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { CashuMint, CashuWallet, CheckStateEnum, type Proof as CashuProof } from "@cashu/cashu-ts";
 import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useObservableState } from "applesauce-react/hooks";
+import { toast } from "sonner";
 import WalletTab from "@/components/wallet/WalletTab";
 import { useAccountManager } from "@/components/providers/ClientProviders";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { getStorageBoolean, setStorageBoolean } from "@/lib/storage";
 import {
   getProofsBalanceSats,
@@ -21,8 +29,11 @@ import { DEFAULT_BASE_URL } from "@/lib/utils";
 import {
   fetchNip60ActiveProofs,
   fetchNip60WalletConfig,
+  getProofsForMint,
   isCloudSyncCapableAccount,
+  publishNip60MintSnapshot,
   publishNip60WalletMints,
+  type WalletProof,
 } from "@/lib/nip60WalletSync";
 
 const CHAT_NIP60_STORAGE_KEY = "usingNip60";
@@ -31,8 +42,12 @@ const FALLBACK_MINT_URL = "https://mint.minibits.cash/Bitcoin";
 const PLATFORM_ACTIVE_MINT_STORAGE_KEY = "platform_active_mint_url";
 
 interface StoredProofWithMint {
+  id?: string;
   amount?: number;
+  secret?: string;
+  C?: string;
   mintUrl?: string;
+  eventId?: string;
 }
 
 function readNip60Preference(): boolean {
@@ -95,6 +110,39 @@ function cleanMintUrl(mintUrl: string): string {
   }
 }
 
+function proofIdentity(proof: StoredProofWithMint): string {
+  if (typeof proof.secret === "string" && proof.secret.length > 0) {
+    return proof.secret;
+  }
+  return `${String(proof.id || "")}:${Number(proof.amount || 0)}:${String(proof.C || "")}`;
+}
+
+async function createWalletForMint(candidateMintUrl: string): Promise<CashuWallet> {
+  const mint = new CashuMint(candidateMintUrl);
+  const keysets = await mint.getKeySets();
+  const activeKeysets = keysets.keysets.filter((keyset) => keyset.active);
+  const msatKeyset = activeKeysets.find(
+    (keyset) => String(keyset.unit).toLowerCase() === "msat"
+  );
+  const satKeyset = activeKeysets.find(
+    (keyset) => String(keyset.unit).toLowerCase() === "sat"
+  );
+  const preferredUnit = msatKeyset ? "msat" : satKeyset ? "sat" : null;
+
+  if (!preferredUnit) {
+    const units = [...new Set(activeKeysets.map((keyset) => String(keyset.unit).toLowerCase()))];
+    throw new Error(
+      `Mint ${candidateMintUrl} has no active sat/msat keyset (units: ${
+        units.join(", ") || "none"
+      })`
+    );
+  }
+
+  const wallet = new CashuWallet(mint, { unit: preferredUnit });
+  await wallet.loadMint();
+  return wallet;
+}
+
 async function isReachableMint(url: string): Promise<boolean> {
   const normalized = normalizeMintUrl(url);
   if (!normalized || isOnionUrl(normalized)) return false;
@@ -140,6 +188,7 @@ export default function Nip60WalletPanel({
   const [isLoadingMints, setIsLoadingMints] = useState(true);
   const [isSavingMints, setIsSavingMints] = useState(false);
   const [isSyncingNip60, setIsSyncingNip60] = useState(false);
+  const [isCleaningAllProofs, setIsCleaningAllProofs] = useState(false);
   const [walletSyncError, setWalletSyncError] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
 
@@ -206,6 +255,155 @@ export default function Nip60WalletPanel({
       setIsSyncingNip60(false);
     }
   }, [syncAccount]);
+
+  const syncMintSnapshotToNip60 = useCallback(
+    async (
+      mintToSync: string,
+      beforeProofs: WalletProof[],
+      afterProofs: WalletProof[]
+    ): Promise<WalletProof[]> => {
+      if (!syncAccount) return afterProofs;
+
+      const normalizedMint = normalizeMintUrl(mintToSync);
+      const beforeMintProofs = getProofsForMint(beforeProofs, normalizedMint);
+      const afterMintProofs = getProofsForMint(afterProofs, normalizedMint);
+      const eventIdsToDelete = Array.from(
+        new Set(
+          beforeMintProofs
+            .map((proof) => proof.eventId)
+            .filter((eventId): eventId is string => typeof eventId === "string")
+        )
+      );
+
+      if (afterMintProofs.length === 0 && eventIdsToDelete.length === 0) {
+        return afterProofs;
+      }
+
+      const newEventId = await publishNip60MintSnapshot(
+        syncAccount,
+        normalizedMint,
+        afterMintProofs,
+        eventIdsToDelete
+      );
+
+      return afterProofs.map((proof) => {
+        if (normalizeMintUrl(proof.mintUrl || "") !== normalizedMint) {
+          return proof;
+        }
+        return {
+          ...proof,
+          eventId: newEventId,
+        };
+      });
+    },
+    [syncAccount]
+  );
+
+  const handleCleanAllSpentProofs = useCallback(async (): Promise<void> => {
+    if (isCleaningAllProofs) return;
+
+    setIsCleaningAllProofs(true);
+    setWalletSyncError(null);
+    try {
+      const proofsBefore = readCashuProofs() as WalletProof[];
+      if (proofsBefore.length === 0) {
+        toast.success("No proofs found");
+        return;
+      }
+
+      const proofMints = uniqueMints(
+        proofsBefore
+          .map((proof) => normalizeMintUrl(proof.mintUrl || ""))
+          .filter((mint) => mint.length > 0)
+      );
+
+      if (proofMints.length === 0) {
+        toast.success("No mint proofs found");
+        return;
+      }
+
+      const spentProofIds = new Set<string>();
+      const changedMints = new Set<string>();
+      const failedMints: string[] = [];
+
+      for (const mint of proofMints) {
+        try {
+          const proofsForMint = getProofsForMint(proofsBefore, mint);
+          if (proofsForMint.length === 0) continue;
+
+          const wallet = await createWalletForMint(mint);
+          const proofStates = await wallet.checkProofsStates(proofsForMint as CashuProof[]);
+          if (!Array.isArray(proofStates) || proofStates.length === 0) continue;
+
+          let foundSpentForMint = false;
+          proofsForMint.forEach((proof, index) => {
+            if (proofStates[index]?.state === CheckStateEnum.SPENT) {
+              spentProofIds.add(proofIdentity(proof));
+              foundSpentForMint = true;
+            }
+          });
+          if (foundSpentForMint) {
+            changedMints.add(mint);
+          }
+        } catch {
+          failedMints.push(cleanMintUrl(mint));
+        }
+      }
+
+      if (spentProofIds.size === 0) {
+        if (failedMints.length > 0) {
+          const errorMessage = `Unable to check ${failedMints.length} mint${
+            failedMints.length === 1 ? "" : "s"
+          }.`;
+          setWalletSyncError(errorMessage);
+          toast.error(errorMessage);
+        } else {
+          toast.success("No spent proofs found");
+        }
+        return;
+      }
+
+      let proofsAfter = proofsBefore.filter(
+        (proof) => !spentProofIds.has(proofIdentity(proof))
+      );
+
+      let nip60SyncFailed = false;
+      for (const mint of changedMints) {
+        try {
+          proofsAfter = await syncMintSnapshotToNip60(mint, proofsBefore, proofsAfter);
+        } catch (syncError) {
+          console.warn("Failed to sync cleaned proofs to NIP-60", syncError);
+          nip60SyncFailed = true;
+        }
+      }
+
+      if (nip60SyncFailed || failedMints.length > 0) {
+        const parts: string[] = [];
+        if (failedMints.length > 0) {
+          parts.push(
+            `Unable to check ${failedMints.length} mint${failedMints.length === 1 ? "" : "s"}.`
+          );
+        }
+        if (nip60SyncFailed) {
+          parts.push("Cleaned proofs locally, but failed to publish part of NIP-60 snapshots.");
+        }
+        setWalletSyncError(parts.join(" "));
+      }
+
+      writeCashuProofs(proofsAfter);
+      setWalletBalance(getProofsBalanceSats());
+      toast.success(
+        `Cleaned ${spentProofIds.size} spent proof${spentProofIds.size === 1 ? "" : "s"}`
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to clean spent proofs";
+      setWalletSyncError(message);
+      toast.error(message);
+    } finally {
+      setIsCleaningAllProofs(false);
+    }
+  }, [isCleaningAllProofs, syncMintSnapshotToNip60]);
 
   useEffect(() => {
     void syncProofsFromNip60();
@@ -414,7 +612,7 @@ export default function Nip60WalletPanel({
               void syncProofsFromNip60();
             }}
             disabled={!syncAccount || isSyncingNip60}
-            variant="secondary"
+            variant="outline"
             size="sm"
             type="button"
           >
@@ -462,7 +660,7 @@ export default function Nip60WalletPanel({
                   isLoadingMints ||
                   availableMints.length <= 1
                 }
-                variant={showRemoveMintMode ? "secondary" : "outline"}
+                variant="outline"
                 size="icon-sm"
                 aria-label="Toggle remove mint mode"
                 title={
@@ -476,6 +674,29 @@ export default function Nip60WalletPanel({
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={() => {
+                        void handleCleanAllSpentProofs();
+                      }}
+                      disabled={isCleaningAllProofs || isSavingMints || isLoadingMints}
+                      variant="outline"
+                      size="icon-sm"
+                      aria-label="Clean all spent proofs"
+                      type="button"
+                    >
+                      <RefreshCw
+                        className={`h-4 w-4 ${isCleaningAllProofs ? "animate-spin" : ""}`}
+                      />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" align="end">
+                    Remove spent proofs from all mints.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           </div>
 
@@ -571,7 +792,7 @@ export default function Nip60WalletPanel({
                     void handleAddMint();
                   }}
                   disabled={!customMintUrl.trim() || isSavingMints || isLoadingMints}
-                  variant="secondary"
+                  variant="outline"
                   type="button"
                 >
                   {isSavingMints ? "Saving..." : "Add mint"}

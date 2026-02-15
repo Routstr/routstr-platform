@@ -734,7 +734,13 @@ export default function NodeKeyWorkflows({
     } finally {
       setIsCreatingFromBalance(false);
     }
-  }, [createAmount, createBaseUrl, createLabel, onCreateSuccess, onUpsertKey]);
+  }, [
+    createAmount,
+    createBaseUrl,
+    createLabel,
+    onCreateSuccess,
+    onUpsertKey,
+  ]);
 
   const handleTopupInvoice = useCallback(async () => {
     const amount = Number.parseInt(topupAmount, 10);
@@ -1318,7 +1324,7 @@ export default function NodeKeyWorkflows({
                   onClick={() => {
                     void handleCopy(topupInvoice.bolt11, `topup-bolt11-${topupInvoice.invoice_id}`);
                   }}
-                  variant="secondary"
+                  variant="outline"
                   size="sm"
                   type="button"
                 >
@@ -1496,7 +1502,7 @@ export default function NodeKeyWorkflows({
                       onClick={() => {
                         void handleCopy(createdChildKeys.join("\n"), "all-child-keys");
                       }}
-                      variant="secondary"
+                      variant="outline"
                       size="sm"
                       type="button"
                     >
@@ -1519,7 +1525,7 @@ export default function NodeKeyWorkflows({
                           onClick={() => {
                             void handleCopy(key, `child-${key}`);
                           }}
-                          variant="secondary"
+                          variant="outline"
                           size="sm"
                           type="button"
                         >

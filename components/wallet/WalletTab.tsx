@@ -429,7 +429,7 @@ const WalletTab: React.FC<WalletTabProps> = ({
           <nav className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden lg:block lg:space-y-1.5 lg:overflow-visible lg:pb-0">
             <Button
               onClick={() => setActiveTab("deposit")}
-              variant={activeTab === "deposit" ? "secondary" : "ghost"}
+              variant={activeTab === "deposit" ? "outline" : "ghost"}
               size="lg"
               className="min-w-[6.75rem] shrink-0 justify-start lg:w-full lg:min-w-0"
               type="button"
@@ -438,7 +438,7 @@ const WalletTab: React.FC<WalletTabProps> = ({
             </Button>
             <Button
               onClick={() => setActiveTab("send")}
-              variant={activeTab === "send" ? "secondary" : "ghost"}
+              variant={activeTab === "send" ? "outline" : "ghost"}
               size="lg"
               className="min-w-[6.75rem] shrink-0 justify-start lg:w-full lg:min-w-0"
               type="button"
@@ -447,7 +447,7 @@ const WalletTab: React.FC<WalletTabProps> = ({
             </Button>
             <Button
               onClick={() => setActiveTab("history")}
-              variant={activeTab === "history" ? "secondary" : "ghost"}
+              variant={activeTab === "history" ? "outline" : "ghost"}
               size="lg"
               className="min-w-[6.75rem] shrink-0 justify-start lg:w-full lg:min-w-0"
               type="button"
@@ -490,7 +490,7 @@ const WalletTab: React.FC<WalletTabProps> = ({
                         key={`mint-quick-${amount}`}
                         onClick={() => void handleQuickMint(amount)}
                         disabled={isMinting}
-                        variant="secondary"
+                        variant="outline"
                         type="button"
                       >
                         {amount} sats
@@ -553,7 +553,7 @@ const WalletTab: React.FC<WalletTabProps> = ({
                             }}
                             disabled={isPayingWithWallet}
                             size="sm"
-                            variant="secondary"
+                            variant="outline"
                             type="button"
                           >
                             {isPayingWithWallet ? "Paying..." : "Pay"}
@@ -743,7 +743,7 @@ const WalletTab: React.FC<WalletTabProps> = ({
                         <Button
                           key={`send-quick-${amount}`}
                           onClick={() => setSendAmount(amount.toString())}
-                          variant="secondary"
+                          variant="outline"
                           type="button"
                         >
                           {amount} sats

@@ -731,7 +731,7 @@ export default function NodesPanel({
           <Button
             onClick={handleRefresh}
             disabled={isRefreshing || isDirectoryLoading || isSummariesLoading}
-            variant="secondary"
+            variant="outline"
             size="sm"
             type="button"
             className="h-8 px-2.5"
