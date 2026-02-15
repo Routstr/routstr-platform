@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
   Circle,
@@ -359,14 +359,6 @@ const WalletTab: React.FC<WalletTabProps> = ({
   type WalletWorkflowId = "deposit" | "send" | "history";
   const [activeTab, setActiveTab] = useState<WalletWorkflowId>("deposit");
 
-  const mintDisplay = useMemo(() => {
-    try {
-      return new URL(mintUrl).host;
-    } catch {
-      return mintUrl;
-    }
-  }, [mintUrl]);
-
   const handleQuickMint = async (amount: number) => {
     setMintAmount(amount.toString());
     await createMintQuote(amount);
@@ -389,23 +381,6 @@ const WalletTab: React.FC<WalletTabProps> = ({
 
   return (
     <div className="min-w-0 space-y-5">
-      <section className="rounded-xl border border-border/70 bg-muted/20 p-4 sm:p-5">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">Wallet balance</p>
-            <p className="text-3xl font-semibold tracking-tight text-foreground">
-              {balance.toLocaleString()} sats
-            </p>
-          </div>
-          <div className="space-y-1 sm:text-right">
-            <p className="text-xs text-muted-foreground">Active mint</p>
-            <p className="text-xs font-mono text-foreground/90 sm:text-sm">
-              {mintDisplay}
-            </p>
-          </div>
-        </div>
-      </section>
-
       {error && (
         <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-sm text-foreground/90">
           {error}
@@ -420,12 +395,12 @@ const WalletTab: React.FC<WalletTabProps> = ({
       <div className="grid min-w-0 gap-4 lg:grid-cols-[12rem_minmax(0,1fr)]">
         <aside className="min-w-0 rounded-xl border border-border/70 bg-card/70 p-2.5 lg:h-[34rem] lg:overflow-y-auto">
           <p className="px-2 pb-2 text-[11px] text-muted-foreground">Wallet</p>
-          <nav className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden lg:block lg:space-y-1.5 lg:overflow-visible lg:pb-0">
+          <nav className="grid grid-cols-3 gap-1.5 lg:block lg:space-y-1.5">
             <Button
               onClick={() => setActiveTab("deposit")}
               variant={activeTab === "deposit" ? "outline" : "ghost"}
               size="lg"
-              className="min-w-[6.75rem] shrink-0 justify-start lg:w-full lg:min-w-0"
+              className="w-full min-w-0 justify-center lg:justify-start"
               type="button"
             >
               Deposit
@@ -434,7 +409,7 @@ const WalletTab: React.FC<WalletTabProps> = ({
               onClick={() => setActiveTab("send")}
               variant={activeTab === "send" ? "outline" : "ghost"}
               size="lg"
-              className="min-w-[6.75rem] shrink-0 justify-start lg:w-full lg:min-w-0"
+              className="w-full min-w-0 justify-center lg:justify-start"
               type="button"
             >
               Send
@@ -443,7 +418,7 @@ const WalletTab: React.FC<WalletTabProps> = ({
               onClick={() => setActiveTab("history")}
               variant={activeTab === "history" ? "outline" : "ghost"}
               size="lg"
-              className="min-w-[6.75rem] shrink-0 justify-start lg:w-full lg:min-w-0"
+              className="w-full min-w-0 justify-center lg:justify-start"
               type="button"
             >
               Invoices
@@ -796,7 +771,7 @@ const WalletTab: React.FC<WalletTabProps> = ({
           )}
 
           {activeTab === "history" && (
-            <div className="h-full space-y-3 overflow-x-clip lg:overflow-y-auto lg:pr-1">
+            <div className="h-full space-y-3 overflow-x-clip pb-[calc(7rem+env(safe-area-inset-bottom))] lg:overflow-y-auto lg:pr-1 lg:pb-0">
               <div>
                 <h3 className="text-base font-semibold tracking-tight">Invoices</h3>
                 <p className="text-sm text-muted-foreground">

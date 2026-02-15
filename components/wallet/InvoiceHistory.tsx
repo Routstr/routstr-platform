@@ -138,18 +138,20 @@ const InvoiceHistory: React.FC<InvoiceHistoryProps> = ({
   return (
     <div className="space-y-4">
       <div className="rounded-md border border-border bg-muted/25 p-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/35 px-3 py-1 text-xs">
-            <span className="text-muted-foreground">Pending</span>
-            <span className="font-semibold text-foreground">{pendingCount}</span>
-          </div>
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/35 px-3 py-1 text-xs">
-            <span className="text-muted-foreground">Paid</span>
-            <span className="font-semibold text-foreground">{paidCount}</span>
-          </div>
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/35 px-3 py-1 text-xs">
-            <span className="text-muted-foreground">Expired</span>
-            <span className="font-semibold text-foreground">{expiredCount}</span>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/35 px-3 py-1 text-xs">
+              <span className="text-muted-foreground">Pending</span>
+              <span className="font-semibold text-foreground">{pendingCount}</span>
+            </div>
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/35 px-3 py-1 text-xs">
+              <span className="text-muted-foreground">Paid</span>
+              <span className="font-semibold text-foreground">{paidCount}</span>
+            </div>
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/35 px-3 py-1 text-xs">
+              <span className="text-muted-foreground">Expired</span>
+              <span className="font-semibold text-foreground">{expiredCount}</span>
+            </div>
           </div>
           <Button
             onClick={() => {
@@ -158,7 +160,7 @@ const InvoiceHistory: React.FC<InvoiceHistoryProps> = ({
             disabled={isChecking || !onCheckNow}
             variant="outline"
             size="sm"
-            className="ml-auto"
+            className="w-full sm:ml-auto sm:w-auto"
             type="button"
           >
             <RefreshCw className={`h-3 w-3 ${isChecking ? "animate-spin" : ""}`} />
@@ -171,7 +173,7 @@ const InvoiceHistory: React.FC<InvoiceHistoryProps> = ({
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-2 pb-[calc(2.5rem+env(safe-area-inset-bottom))] lg:pb-0">
         {filteredInvoices.map((invoice) => {
           const status = getStatusText(invoice);
 
@@ -180,10 +182,11 @@ const InvoiceHistory: React.FC<InvoiceHistoryProps> = ({
               key={invoice.id}
               className="bg-muted/50 border border-border rounded-md p-3 hover:bg-muted transition-colors"
             >
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    {statusIcon(invoice)}
+              <div className="flex items-start gap-2">
+                <div className="shrink-0 pt-0.5">{statusIcon(invoice)}</div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium text-foreground">
                       {invoice.type === "mint" ? "Receive" : "Send"}
                     </span>
@@ -195,7 +198,7 @@ const InvoiceHistory: React.FC<InvoiceHistoryProps> = ({
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     <span>{formatRelativeDate(invoice.createdAt)}</span>
                     {invoice.paidAt ? (
                       <>
@@ -205,8 +208,8 @@ const InvoiceHistory: React.FC<InvoiceHistoryProps> = ({
                     ) : null}
                   </div>
 
-                  <div className="flex items-center gap-2 mt-2">
-                    <code className="text-xs text-muted-foreground font-mono">
+                  <div className="mt-2 flex items-center gap-2">
+                    <code className="min-w-0 flex-1 truncate text-xs text-muted-foreground font-mono">
                       {truncateInvoice(invoice.paymentRequest)}
                     </code>
                     <Button
@@ -216,6 +219,7 @@ const InvoiceHistory: React.FC<InvoiceHistoryProps> = ({
                       }}
                       variant="ghost"
                       size="icon-xs"
+                      className="shrink-0"
                       title="Copy invoice"
                       type="button"
                     >
@@ -223,7 +227,7 @@ const InvoiceHistory: React.FC<InvoiceHistoryProps> = ({
                     </Button>
                   </div>
 
-                  <div className="flex items-center gap-2 mt-2">
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
                     {status === "Pending" && (invoice.retryCount || 0) > 0 ? (
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
                         <RotateCcw className="h-3 w-3" />

@@ -348,7 +348,7 @@ export default function PlatformShell({
   }
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(var(--platform-tint),var(--platform-tint)),radial-gradient(circle_at_10%_0%,var(--platform-glow-top),transparent_38%),radial-gradient(circle_at_90%_100%,var(--platform-glow-bottom),transparent_45%),var(--background)] text-foreground">
+    <div className="min-h-screen bg-[linear-gradient(var(--platform-tint),var(--platform-tint)),radial-gradient(circle_at_10%_0%,var(--platform-glow-top),transparent_38%),radial-gradient(circle_at_90%_100%,var(--platform-glow-bottom),transparent_45%),var(--background)] text-foreground md:h-screen md:overflow-hidden">
       <div className="mx-auto w-full max-w-6xl px-3 py-4 pb-[calc(4.75rem+env(safe-area-inset-bottom))] sm:px-5 sm:py-5 md:h-full md:pb-5">
         <div className="grid min-w-0 items-start gap-4 md:h-full md:grid-cols-[11.5rem_minmax(0,1fr)] md:gap-0">
           <aside className="hidden min-w-0 space-y-5 md:sticky md:top-5 md:flex md:h-[calc(100vh-2.5rem)] md:flex-col md:self-start md:pt-5">
@@ -480,56 +480,58 @@ export default function PlatformShell({
             </div>
           </aside>
 
-          <section
-            className={`relative min-w-0 overflow-x-clip p-3 sm:p-5 md:ml-5 md:h-[calc(100vh-2.5rem)] md:pl-7 md:pr-2 md:before:absolute md:before:bottom-0 md:before:left-0 md:before:top-0 md:before:w-px md:before:bg-gradient-to-b md:before:from-border/55 md:before:via-border/40 md:before:to-border/15 ${
-              currentTab === "nodes"
-                ? "md:overflow-hidden"
-                : "md:overflow-y-auto md:overscroll-y-none"
-            }`}
-          >
-            <div
-              className={`space-y-5 ${
-                currentTab === "nodes" || currentTab === "playground"
-                  ? "md:flex md:h-full md:min-h-0 md:flex-col"
-                  : ""
+          <div className="relative min-w-0 md:ml-5 md:h-[calc(100vh-2.5rem)] md:before:absolute md:before:bottom-0 md:before:left-0 md:before:top-0 md:before:w-px md:before:bg-gradient-to-b md:before:from-border/55 md:before:via-border/40 md:before:to-border/15">
+            <section
+              className={`min-w-0 overflow-x-clip p-3 sm:p-5 md:h-full md:pl-7 md:pr-2 ${
+                currentTab === "nodes"
+                  ? "md:overflow-hidden"
+                  : "md:overflow-y-auto md:overscroll-y-none"
               }`}
             >
-              {currentTab !== "home" && (
-                <header className="space-y-1">
-                  <h1 className="text-xl font-semibold tracking-tight text-foreground">
-                    {tabMeta.title}
-                  </h1>
-                  <p className="text-sm text-muted-foreground">
-                    {tabMeta.description}
-                  </p>
-                </header>
-              )}
-              {currentTab === "home" && (
-                <DeveloperHome
-                  baseUrl={baseUrl}
-                />
-              )}
-              {currentTab === "playground" && (
-                <div className="md:min-h-0 md:flex-1">
-                  <PlaygroundPanel
-                    baseUrl={baseUrl}
-                    onBaseUrlChange={handleBaseUrlChange}
-                  />
-                </div>
-              )}
-              {currentTab === "nodes" && (
-                <div className="md:min-h-0 md:flex-1">
-                  <NodesPanel
+              <div
+                className={`space-y-5 ${
+                  currentTab === "nodes" || currentTab === "playground"
+                    ? "md:flex md:h-full md:min-h-0 md:flex-col"
+                    : ""
+                }`}
+              >
+                {currentTab !== "home" && (
+                  <header className="space-y-1">
+                    <h1 className="text-xl font-semibold tracking-tight text-foreground">
+                      {tabMeta.title}
+                    </h1>
+                    <p className="text-sm text-muted-foreground">
+                      {tabMeta.description}
+                    </p>
+                  </header>
+                )}
+                {currentTab === "home" && (
+                  <DeveloperHome
                     baseUrl={baseUrl}
                   />
-                </div>
-              )}
-              {currentTab === "api-keys" && <ApiKeysPanel baseUrl={baseUrl} />}
-              {currentTab === "wallet" && (
-                <Nip60WalletPanel baseUrl={baseUrl} />
-              )}
-            </div>
-          </section>
+                )}
+                {currentTab === "playground" && (
+                  <div className="md:min-h-0 md:flex-1">
+                    <PlaygroundPanel
+                      baseUrl={baseUrl}
+                      onBaseUrlChange={handleBaseUrlChange}
+                    />
+                  </div>
+                )}
+                {currentTab === "nodes" && (
+                  <div className="md:min-h-0 md:flex-1">
+                    <NodesPanel
+                      baseUrl={baseUrl}
+                    />
+                  </div>
+                )}
+                {currentTab === "api-keys" && <ApiKeysPanel baseUrl={baseUrl} />}
+                {currentTab === "wallet" && (
+                  <Nip60WalletPanel baseUrl={baseUrl} />
+                )}
+              </div>
+            </section>
+          </div>
         </div>
       </div>
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-4 pb-[calc(0.35rem+env(safe-area-inset-bottom))] md:hidden">
