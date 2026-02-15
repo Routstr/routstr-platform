@@ -189,22 +189,28 @@ export default function DeveloperHome({ baseUrl }: { baseUrl: string }) {
   };
 
   return (
-    <div className="space-y-5">
-      <Card className="relative gap-0 overflow-hidden p-6">
+    <div className="space-y-4 sm:space-y-5">
+      <Card className="relative gap-0 overflow-hidden p-4 sm:p-6">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.12),transparent_48%),radial-gradient(circle_at_bottom_left,rgba(16,185,129,0.10),transparent_44%)]" />
-        <div className="relative flex flex-wrap items-start justify-between gap-4">
+        <div className="relative flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-4">
           <div className="max-w-3xl space-y-2">
-            <h1 className="text-3xl font-semibold tracking-tight">Home</h1>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Home</h1>
             <p className="text-sm text-muted-foreground">{heroSummary}</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={primaryAction} type="button">
+          <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap">
+            <Button
+              onClick={primaryAction}
+              variant="outline"
+              className="w-full justify-center sm:w-auto sm:justify-start"
+              type="button"
+            >
               <KeyRound className="h-4 w-4" />
               {primaryActionLabel}
             </Button>
             <Button
               onClick={() => navigateToTab("api-keys")}
-              variant="ghost"
+              variant="outline"
+              className="w-full justify-center sm:w-auto sm:justify-start"
               type="button"
             >
               Open API Keys
@@ -213,26 +219,26 @@ export default function DeveloperHome({ baseUrl }: { baseUrl: string }) {
         </div>
       </Card>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <div className="rounded-xl border border-border/70 bg-card p-3">
+      <section className="grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-5">
+        <div className="rounded-xl border border-border/70 bg-card p-3 sm:p-3.5">
           <p className="text-xs text-muted-foreground">API keys</p>
-          <p className="mt-1 text-lg font-semibold">{storedApiKeys.length}</p>
+          <p className="mt-1 text-base font-semibold sm:text-lg">{storedApiKeys.length}</p>
         </div>
-        <div className="rounded-xl border border-border/70 bg-card p-3">
+        <div className="rounded-xl border border-border/70 bg-card p-3 sm:p-3.5">
           <p className="text-xs text-muted-foreground">Endpoint keys</p>
-          <p className="mt-1 text-lg font-semibold">{endpointScopedKeys.length}</p>
+          <p className="mt-1 text-base font-semibold sm:text-lg">{endpointScopedKeys.length}</p>
         </div>
-        <div className="rounded-xl border border-border/70 bg-card p-3">
+        <div className="rounded-xl border border-border/70 bg-card p-3 sm:p-3.5">
           <p className="text-xs text-muted-foreground">Funded keys</p>
-          <p className="mt-1 text-lg font-semibold">{fundedKeyCount}</p>
+          <p className="mt-1 text-base font-semibold sm:text-lg">{fundedKeyCount}</p>
         </div>
-        <div className="rounded-xl border border-border/70 bg-card p-3">
+        <div className="rounded-xl border border-border/70 bg-card p-3 sm:p-3.5">
           <p className="text-xs text-muted-foreground">Invalid keys</p>
-          <p className="mt-1 text-lg font-semibold">{invalidKeyCount}</p>
+          <p className="mt-1 text-base font-semibold sm:text-lg">{invalidKeyCount}</p>
         </div>
-        <div className="rounded-xl border border-border/70 bg-card p-3">
+        <div className="col-span-2 rounded-xl border border-border/70 bg-card p-3 sm:p-3.5 xl:col-span-1">
           <p className="text-xs text-muted-foreground">Total key balance</p>
-          <p className="mt-1 text-lg font-semibold">
+          <p className="mt-1 text-base font-semibold sm:text-lg">
             {(totalKeyBalanceMsats / 1000).toLocaleString(undefined, {
               maximumFractionDigits: 2,
             })}{" "}
@@ -241,16 +247,16 @@ export default function DeveloperHome({ baseUrl }: { baseUrl: string }) {
         </div>
       </section>
 
-      <section className="grid gap-3 xl:grid-cols-2">
-        <Card className="gap-0 border-border/70 bg-card p-4">
+      <section className="grid gap-3 lg:grid-cols-2">
+        <Card className="gap-0 border-border/70 bg-card p-3.5 sm:p-4">
           <div className="mb-3">
             <h2 className="text-base font-semibold tracking-tight">Quick Actions</h2>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-2 gap-2">
             <Button
               onClick={() => navigateToTab("playground")}
               variant="outline"
-              className="justify-start gap-2"
+              className="h-10 justify-start gap-2"
               type="button"
             >
               <Code2 className="h-4 w-4" />
@@ -259,7 +265,7 @@ export default function DeveloperHome({ baseUrl }: { baseUrl: string }) {
             <Button
               onClick={() => navigateToTab("api-keys")}
               variant="outline"
-              className="justify-start gap-2"
+              className="h-10 justify-start gap-2"
               type="button"
             >
               <KeyRound className="h-4 w-4" />
@@ -268,7 +274,7 @@ export default function DeveloperHome({ baseUrl }: { baseUrl: string }) {
             <Button
               onClick={() => navigateToTab("nodes")}
               variant="outline"
-              className="justify-start gap-2"
+              className="h-10 justify-start gap-2"
               type="button"
             >
               <Network className="h-4 w-4" />
@@ -277,7 +283,7 @@ export default function DeveloperHome({ baseUrl }: { baseUrl: string }) {
             <Button
               onClick={() => navigateToTab("wallet")}
               variant="outline"
-              className="justify-start gap-2"
+              className="h-10 justify-start gap-2"
               type="button"
             >
               <Wallet className="h-4 w-4" />
@@ -286,8 +292,8 @@ export default function DeveloperHome({ baseUrl }: { baseUrl: string }) {
           </div>
         </Card>
 
-        <Card className="gap-0 border-border/70 bg-card p-4">
-          <div className="mb-3 flex items-start justify-between gap-3">
+        <Card className="gap-0 border-border/70 bg-card p-3.5 sm:p-4">
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
             <div>
               <h2 className="text-base font-semibold tracking-tight">Endpoint Keys</h2>
               <p className="text-xs text-muted-foreground">
@@ -297,8 +303,9 @@ export default function DeveloperHome({ baseUrl }: { baseUrl: string }) {
             </div>
             <Button
               onClick={() => navigateToTab("api-keys")}
-              variant="ghost"
+              variant="outline"
               size="sm"
+              className="w-full sm:w-auto"
               type="button"
             >
               View all
