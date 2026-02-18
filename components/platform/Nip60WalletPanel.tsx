@@ -245,7 +245,11 @@ export default function Nip60WalletPanel({
     setWalletSyncError(null);
     try {
       const syncedProofs = await fetchNip60ActiveProofs(syncAccount);
-      writeCashuProofs(syncedProofs);
+      const localProofs = readCashuProofs() as WalletProof[];
+      const shouldPersistRemote = syncedProofs.length > 0 || localProofs.length === 0;
+      if (shouldPersistRemote) {
+        writeCashuProofs(syncedProofs);
+      }
       setWalletBalance(getProofsBalanceSats());
       setLastSyncedAt(Date.now());
     } catch (error) {

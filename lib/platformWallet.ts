@@ -98,7 +98,8 @@ export function appendCashuProofs(proofs: ProofLike[]): ProofLike[] {
 
 export function getProofsBalanceSats(): number {
   return readCashuProofs().reduce((total, proof) => {
-    return total + (Number.isFinite(proof.amount) ? proof.amount : 0);
+    const amount = Number(proof.amount);
+    return total + (Number.isFinite(amount) ? amount : 0);
   }, 0);
 }
 
