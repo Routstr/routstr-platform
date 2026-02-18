@@ -41,6 +41,7 @@ const CHAT_NIP60_STORAGE_KEY = "usingNip60";
 const LEGACY_PLATFORM_NIP60_STORAGE_KEY = "platform_use_nip60_wallet";
 const FALLBACK_MINT_URL = "https://mint.minibits.cash/Bitcoin";
 const PLATFORM_ACTIVE_MINT_STORAGE_KEY = "platform_active_mint_url";
+const EMPTY_REMOTE_SYNC_RETRY_WAIT_MS = 15000;
 
 interface StoredProofWithMint {
   id?: string;
@@ -244,8 +245,13 @@ export default function Nip60WalletPanel({
     setIsSyncingNip60(true);
     setWalletSyncError(null);
     try {
-      const syncedProofs = await fetchNip60ActiveProofs(syncAccount);
+      let syncedProofs = await fetchNip60ActiveProofs(syncAccount);
       const localProofs = readCashuProofs() as WalletProof[];
+      if (syncedProofs.length === 0 && localProofs.length === 0) {
+        syncedProofs = await fetchNip60ActiveProofs(syncAccount, {
+          maxWaitMs: EMPTY_REMOTE_SYNC_RETRY_WAIT_MS,
+        });
+      }
       const shouldPersistRemote = syncedProofs.length > 0 || localProofs.length === 0;
       if (shouldPersistRemote) {
         writeCashuProofs(syncedProofs);

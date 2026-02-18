@@ -12,7 +12,11 @@ const DEFAULT_SYNC_RELAYS = [
   "wss://relay.primal.net",
   "wss://relay.damus.io",
   "wss://relay.nostr.band",
+  "wss://relay.chorus.community",
+  "wss://relay.nsec.app",
 ];
+
+const DEFAULT_TOKEN_QUERY_WAIT_MS = 7000;
 
 const CASHU_WALLET_KIND = 17375;
 const CASHU_TOKEN_KIND = 7375;
@@ -148,7 +152,8 @@ export function getConfiguredRelayUrls(): string[] {
 
 async function fetchDecryptedTokenEvents(
   account: CloudSyncCapableAccount,
-  relays: string[]
+  relays: string[],
+  maxWaitMs = DEFAULT_TOKEN_QUERY_WAIT_MS
 ): Promise<DecryptedTokenEvent[]> {
   const pool = new SimplePool();
   try {
@@ -159,7 +164,7 @@ async function fetchDecryptedTokenEvents(
         authors: [account.pubkey],
         limit: 500,
       },
-      { maxWait: 7000 }
+      { maxWait: maxWaitMs }
     );
 
     const decryptedEvents: DecryptedTokenEvent[] = [];
@@ -186,10 +191,15 @@ async function fetchDecryptedTokenEvents(
 }
 
 export async function fetchNip60ActiveProofs(
-  account: CloudSyncCapableAccount
+  account: CloudSyncCapableAccount,
+  options?: { maxWaitMs?: number }
 ): Promise<WalletProof[]> {
   const relays = getConfiguredRelayUrls();
-  const tokenEvents = await fetchDecryptedTokenEvents(account, relays);
+  const tokenEvents = await fetchDecryptedTokenEvents(
+    account,
+    relays,
+    options?.maxWaitMs
+  );
 
   const deletedEventIds = new Set<string>();
   for (const event of tokenEvents) {
