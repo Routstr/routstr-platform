@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   CashuMint,
   CashuWallet,
@@ -759,6 +760,8 @@ export default function ApiKeysPanel({
   const { manager } = useAccountManager();
   const activeAccount = useObservableState(manager.active$);
   const activePubkey = activeAccount?.pubkey || null;
+  const searchParams = useSearchParams();
+  const hasAutoOpenedCreateRef = useRef(false);
 
   const [isSyncBootstrapping, setIsSyncBootstrapping] = useState(false);
   const syncAccount = useMemo(
@@ -786,6 +789,20 @@ export default function ApiKeysPanel({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showTopupDialog, setShowTopupDialog] = useState(false);
   const [showChildWorkflowDialog, setShowChildWorkflowDialog] = useState(false);
+
+  useEffect(() => {
+    if (hasAutoOpenedCreateRef.current) return;
+    const createParam = searchParams.get("create") ?? searchParams.get("new");
+    if (!createParam) return;
+
+    const normalized = createParam.trim().toLowerCase();
+    const shouldOpen =
+      normalized === "1" || normalized === "true" || normalized === "yes";
+    if (!shouldOpen) return;
+
+    hasAutoOpenedCreateRef.current = true;
+    setShowCreateDialog(true);
+  }, [searchParams]);
 
   const [keyToDelete, setKeyToDelete] = useState<StoredApiKey | null>(null);
   const [keyToTopup, setKeyToTopup] = useState<StoredApiKey | null>(null);
