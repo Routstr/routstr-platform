@@ -6,6 +6,7 @@ import {
   CashuMint,
   CashuWallet,
   CheckStateEnum,
+  getDecodedToken,
   getEncodedTokenV4,
   type Proof as CashuProof,
 } from "@cashu/cashu-ts";
@@ -35,6 +36,7 @@ import {
 import {
   annotateProofsWithMint,
   getProofsForMint,
+  publishNip60MintSnapshot,
   type WalletProof,
 } from "@/lib/nip60WalletSync";
 import { DEFAULT_BASE_URL } from "@/lib/utils";
@@ -56,6 +58,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 
 export interface StoredApiKey {
   key: string;
@@ -73,18 +76,8 @@ type DirectoryProvider = {
   onion_urls?: string[];
 };
 
-type ProviderModel = {
-  id?: string;
-  sats_pricing?: {
-    prompt?: number;
-    completion?: number;
-  } | null;
-};
-
 const CHAT_LOCAL_API_KEYS_STORAGE_KEY = "api_keys";
-const LEGACY_PLATFORM_LOCAL_STORAGE_KEY = "platform_api_keys_local";
-const CHAT_BASE_URLS_STORAGE_KEY = "base_urls_list";
-const CHAT_PROVIDER_MODELS_STORAGE_KEY = "modelsFromAllProviders";
+const LOCAL_CASHU_TOKENS_STORAGE_KEY = "local_cashu_tokens";
 const NOSTR_APP_CONFIG_STORAGE_KEY = "nostr:app-config";
 const NOSTR_RELAYS_STORAGE_KEY = "nostr_relays";
 const API_KEYS_SYNC_KIND = 30078;
@@ -102,6 +95,15 @@ const DEFAULT_SYNC_RELAYS = [
   "wss://relay.nostr.band",
   "wss://nos.lol",
 ];
+const RECOMMENDED_PROVIDERS: Array<{
+  url: string;
+  label: string;
+  order: number;
+}> = [
+  { url: "https://api.nonkycai.com/", label: "recommended", order: 1 },
+  { url: "https://api.routstr.com/", label: "recommended", order: 2 },
+  { url: "https://privateprovider.xyz/", label: "recommended", order: 3 },
+];
 type CloudSyncCapableAccount = {
   pubkey: string;
   signEvent: (event: EventTemplate) => Promise<NostrEvent>;
@@ -109,6 +111,12 @@ type CloudSyncCapableAccount = {
     encrypt: (pubkey: string, plaintext: string) => Promise<string>;
     decrypt: (pubkey: string, ciphertext: string) => Promise<string>;
   };
+};
+type UnifiedRefundResult = {
+  success: boolean;
+  refundedAmount?: number;
+  message?: string;
+  requestId?: string;
 };
 
 function isCloudSyncCapableAccount(
@@ -553,7 +561,7 @@ function getProviderEndpoints(provider: DirectoryProvider): string[] {
   for (const candidate of rawUrls) {
     if (typeof candidate !== "string") continue;
     const normalized = normalizeBaseUrl(candidate);
-    if (!normalized || isOnionUrl(normalized) || !shouldAllowHttp(normalized)) {
+    if (!normalized || !shouldAllowHttp(normalized)) {
       continue;
     }
     if (seen.has(normalized)) continue;
@@ -573,59 +581,31 @@ function safeJsonParse<T>(raw: string | null, fallback: T): T {
   }
 }
 
-function readStoredBaseUrls(): string[] {
+function getLocalCashuTokens(): Array<{ baseUrl: string; token: string }> {
   if (typeof window === "undefined") return [];
-
-  const urls = new Set<string>();
-  const addUrl = (candidate: unknown) => {
-    if (typeof candidate !== "string") return;
-    const normalized = normalizeBaseUrl(candidate);
-    if (!normalized || isOnionUrl(normalized) || !shouldAllowHttp(normalized)) return;
-    urls.add(normalized);
-  };
-
-  const baseUrlsList = safeJsonParse<unknown[]>(
-    localStorage.getItem(CHAT_BASE_URLS_STORAGE_KEY),
+  return safeJsonParse<Array<{ baseUrl: string; token: string }>>(
+    localStorage.getItem(LOCAL_CASHU_TOKENS_STORAGE_KEY),
     []
   );
-  for (const item of baseUrlsList) {
-    addUrl(item);
-  }
-
-  const modelsByProvider = safeJsonParse<Record<string, unknown>>(
-    localStorage.getItem(CHAT_PROVIDER_MODELS_STORAGE_KEY),
-    {}
-  );
-  for (const key of Object.keys(modelsByProvider)) {
-    addUrl(key);
-  }
-
-  const localApiKeys = parseStoredApiKeys(
-    localStorage.getItem(CHAT_LOCAL_API_KEYS_STORAGE_KEY)
-  );
-  for (const keyData of localApiKeys) {
-    addUrl(keyData.baseUrl);
-  }
-
-  addUrl(localStorage.getItem("platform_active_base_url"));
-  return Array.from(urls);
 }
 
-async function fetchAvailableModelCount(baseUrl: string): Promise<number> {
-  try {
-    const response = await fetch(`${baseUrl}v1/models`, { cache: "no-store" });
-    if (!response.ok) return 0;
-    const payload = (await response.json()) as { data?: ProviderModel[] };
-    const models = Array.isArray(payload.data) ? payload.data : [];
-    return models.filter(
-      (model) =>
-        typeof model?.id === "string" &&
-        model.id.length > 0 &&
-        Boolean(model.sats_pricing)
-    ).length;
-  } catch {
-    return 0;
+function setLocalCashuToken(baseUrl: string, token: string): void {
+  if (typeof window === "undefined") return;
+  const tokens = getLocalCashuTokens();
+  const existingIndex = tokens.findIndex((entry) => entry.baseUrl === baseUrl);
+  if (existingIndex !== -1) {
+    tokens[existingIndex] = { baseUrl, token };
+  } else {
+    tokens.push({ baseUrl, token });
   }
+  localStorage.setItem(LOCAL_CASHU_TOKENS_STORAGE_KEY, JSON.stringify(tokens));
+}
+
+function removeLocalCashuToken(baseUrl: string): void {
+  if (typeof window === "undefined") return;
+  const tokens = getLocalCashuTokens();
+  const updatedTokens = tokens.filter((entry) => entry.baseUrl !== baseUrl);
+  localStorage.setItem(LOCAL_CASHU_TOKENS_STORAGE_KEY, JSON.stringify(updatedTokens));
 }
 
 function formatSats(balanceMsats: number | null): string {
@@ -637,44 +617,28 @@ function getKeyBaseUrl(keyData: StoredApiKey, fallbackBaseUrl: string): string {
   return normalizeBaseUrl(keyData.baseUrl || fallbackBaseUrl) || fallbackBaseUrl;
 }
 
-function getKeyCompositeId(keyData: StoredApiKey, fallbackBaseUrl: string): string {
-  return `${getKeyBaseUrl(keyData, fallbackBaseUrl)}::${keyData.key}`;
+function getKeyIdentity(keyData: StoredApiKey): string {
+  return keyData.key;
 }
 
 function normalizeStoredKeys(
   keys: StoredApiKey[],
   fallbackBaseUrl: string
 ): StoredApiKey[] {
-  const deduped = new Map<string, StoredApiKey>();
-  for (const keyData of keys) {
-    const normalized: StoredApiKey = {
-      ...keyData,
-      label: keyData.label || "Unnamed",
-      baseUrl: getKeyBaseUrl(keyData, fallbackBaseUrl),
-    };
-    deduped.set(getKeyCompositeId(normalized, fallbackBaseUrl), normalized);
-  }
-  return Array.from(deduped.values());
+  return keys.map((keyData) => ({
+    ...keyData,
+    label: keyData.label || "Unnamed",
+    baseUrl: getKeyBaseUrl(keyData, fallbackBaseUrl),
+  }));
 }
 
 function readLocalApiKeys(
-  fallbackBaseUrl: string,
-  activePubkey: string | null
+  fallbackBaseUrl: string
 ): StoredApiKey[] {
   if (typeof window === "undefined") return [];
 
-  const unified = parseStoredApiKeys(
-    localStorage.getItem(CHAT_LOCAL_API_KEYS_STORAGE_KEY)
-  );
-  const legacyLocal = parseStoredApiKeys(
-    localStorage.getItem(LEGACY_PLATFORM_LOCAL_STORAGE_KEY)
-  );
-  const legacyAccountScoped = activePubkey
-    ? parseStoredApiKeys(localStorage.getItem(`platform_api_keys_${activePubkey}`))
-    : [];
-
   const merged = normalizeStoredKeys(
-    [...unified, ...legacyLocal, ...legacyAccountScoped],
+    parseStoredApiKeys(localStorage.getItem(CHAT_LOCAL_API_KEYS_STORAGE_KEY)),
     fallbackBaseUrl
   );
 
@@ -751,14 +715,15 @@ export default function ApiKeysPanel({
 }: {
   baseUrl: string;
 }) {
+  const torMode =
+    typeof window !== "undefined" && window.location.hostname.endsWith(".onion");
   const normalizedInputBaseUrl = normalizeBaseUrl(baseUrl);
   const normalizedBaseUrl =
-    normalizedInputBaseUrl && !isOnionUrl(normalizedInputBaseUrl)
+    normalizedInputBaseUrl && (torMode || !isOnionUrl(normalizedInputBaseUrl))
       ? normalizedInputBaseUrl
       : DEFAULT_BASE_URL;
   const { manager } = useAccountManager();
   const activeAccount = useObservableState(manager.active$);
-  const activePubkey = activeAccount?.pubkey || null;
   const searchParams = useSearchParams();
   const hasAutoOpenedCreateRef = useRef(false);
 
@@ -817,25 +782,36 @@ export default function ApiKeysPanel({
   const [isTopupKey, setIsTopupKey] = useState<string | null>(null);
   const [isRefundingKey, setIsRefundingKey] = useState<string | null>(null);
   const [isCreatingKey, setIsCreatingKey] = useState(false);
+  const [refundFailed, setRefundFailed] = useState(false);
+  const [cloudSyncEnabled, setCloudSyncEnabled] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("api_keys_cloud_sync_enabled") !== "false";
+    }
+    return true;
+  });
 
   const [activeMintUrl, setActiveMintUrl] = useState("");
   const [activeMintBalanceSats, setActiveMintBalanceSats] = useState<number | null>(null);
   const [isReadingMintBalance, setIsReadingMintBalance] = useState(false);
-
   const getKeyBase = (keyData: StoredApiKey): string => {
     return getKeyBaseUrl(keyData, normalizedBaseUrl);
   };
 
   const getKeyId = (keyData: StoredApiKey): string => {
-    return getKeyCompositeId(keyData, normalizedBaseUrl);
+    return getKeyIdentity(keyData);
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem("api_keys_cloud_sync_enabled", String(cloudSyncEnabled));
+  }, [cloudSyncEnabled]);
 
   useEffect(() => {
     let cancelled = false;
     const loadKeys = async () => {
-      const localKeys = readLocalApiKeys(normalizedBaseUrl, activePubkey);
+      const localKeys = readLocalApiKeys(normalizedBaseUrl);
 
-      if (!syncAccount) {
+      if (!cloudSyncEnabled || !syncAccount) {
         if (!cancelled) {
           setStoredApiKeys(localKeys);
           setIsSyncBootstrapping(false);
@@ -878,18 +854,64 @@ export default function ApiKeysPanel({
     return () => {
       cancelled = true;
     };
-  }, [syncAccount, normalizedBaseUrl, activePubkey]);
+  }, [syncAccount, normalizedBaseUrl, cloudSyncEnabled]);
 
-  const persistKeys = async (keys: StoredApiKey[]) => {
-    const normalized = normalizeStoredKeys(keys, normalizedBaseUrl);
-    setStoredApiKeys(normalized);
+  const persistKeys = async (
+    keys: StoredApiKey[],
+    successMessage?: string
+  ): Promise<void> => {
+    setStoredApiKeys(keys);
 
-    if (syncAccount) {
-      await publishCloudApiKeys(syncAccount, normalized);
+    if (cloudSyncEnabled) {
+      if (!syncAccount) {
+        throw new Error("User not logged in");
+      }
+      await publishCloudApiKeys(syncAccount, keys);
+    } else {
+      localStorage.setItem(CHAT_LOCAL_API_KEYS_STORAGE_KEY, JSON.stringify(keys));
     }
-
-    localStorage.setItem(CHAT_LOCAL_API_KEYS_STORAGE_KEY, JSON.stringify(normalized));
     window.dispatchEvent(new Event("platform-api-keys-updated"));
+    if (successMessage) {
+      toast.success(successMessage);
+    }
+  };
+
+  useEffect(() => {
+    if (!cloudSyncEnabled || !syncAccount) return;
+
+    let cancelled = false;
+    const syncFromCloud = async () => {
+      try {
+        const cloudKeys = await fetchCloudApiKeys(syncAccount, normalizedBaseUrl);
+        if (cancelled) return;
+        setStoredApiKeys(cloudKeys);
+      } catch {
+        // Keep current keys on transient relay/network errors
+      }
+    };
+
+    const onFocus = () => {
+      void syncFromCloud();
+    };
+
+    const intervalId = window.setInterval(() => {
+      void syncFromCloud();
+    }, 20000);
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [syncAccount, normalizedBaseUrl, cloudSyncEnabled]);
+
+  const deleteApiKeyFromCloud = async (keyToDelete: string): Promise<void> => {
+    if (!syncAccount) {
+      throw new Error("User not logged in");
+    }
+    const updatedKeys = storedApiKeys.filter((keyData) => keyData.key !== keyToDelete);
+    await publishCloudApiKeys(syncAccount, updatedKeys);
   };
 
   useEffect(() => {
@@ -905,15 +927,15 @@ export default function ApiKeysPanel({
       const addUrl = (candidate: unknown) => {
         if (typeof candidate !== "string") return;
         const normalized = normalizeBaseUrl(candidate);
-        if (!normalized || isOnionUrl(normalized) || !shouldAllowHttp(normalized)) {
+        if (
+          !normalized ||
+          (!torMode && isOnionUrl(normalized)) ||
+          !shouldAllowHttp(normalized)
+        ) {
           return;
         }
         discoveredUrls.add(normalized);
       };
-
-      for (const cachedUrl of readStoredBaseUrls()) {
-        addUrl(cachedUrl);
-      }
 
       try {
         const response = await fetch("https://api.routstr.com/v1/providers/", {
@@ -932,47 +954,36 @@ export default function ApiKeysPanel({
         // keep fallback candidates
       }
 
-      const candidates = Array.from(discoveredUrls).filter(Boolean);
-      const modelCounts = new Map<string, number>();
-
-      const counts = await Promise.allSettled(
-        candidates.map(async (url) => ({
-          url,
-          count: await fetchAvailableModelCount(url),
-        }))
-      );
-
-      for (const result of counts) {
-        if (result.status === "fulfilled") {
-          modelCounts.set(result.value.url, result.value.count);
-        }
-      }
-
-      const filtered = candidates.filter((url) => {
-        if (requiredUrls.has(url)) return true;
-        return (modelCounts.get(url) || 0) > 0;
-      });
-
-      const list = filtered.sort((a, b) => {
-        const aRequired = requiredUrls.has(a) ? 0 : 1;
-        const bRequired = requiredUrls.has(b) ? 0 : 1;
-        if (aRequired !== bRequired) return aRequired - bRequired;
-        return a.localeCompare(b);
-      });
-
-      const finalList = list.length > 0 ? list : Array.from(requiredUrls);
+      const isProduction =
+        typeof window !== "undefined" &&
+        window.location.hostname === "chat.routstr.com";
+      const finalList = Array.from(discoveredUrls)
+        .filter((url) => !(isProduction && url.includes("staging")))
+        .sort((a, b) => {
+          const aRecommended = RECOMMENDED_PROVIDERS.find((rp) =>
+            a.includes(rp.url.replace(/^https?:\/\//, "").replace(/\/$/, ""))
+          );
+          const bRecommended = RECOMMENDED_PROVIDERS.find((rp) =>
+            b.includes(rp.url.replace(/^https?:\/\//, "").replace(/\/$/, ""))
+          );
+          const aOrder = aRecommended?.order ?? 999;
+          const bOrder = bRecommended?.order ?? 999;
+          if (aOrder !== bOrder) return aOrder - bOrder;
+          return a.localeCompare(b);
+        });
+      const candidates = finalList.length > 0 ? finalList : Array.from(requiredUrls);
       if (cancelled) return;
 
-      setAvailableBaseUrls(finalList);
+      setAvailableBaseUrls(candidates);
       setSelectedAddBaseUrl((prev) => {
         const normalized = normalizeBaseUrl(prev);
-        if (normalized && finalList.includes(normalized)) return normalized;
-        return finalList[0] || normalizedBaseUrl;
+        if (normalized && candidates.includes(normalized)) return normalized;
+        return candidates[0] || normalizedBaseUrl;
       });
       setSelectedCreateBaseUrl((prev) => {
         const normalized = normalizeBaseUrl(prev);
-        if (normalized && finalList.includes(normalized)) return normalized;
-        return finalList[0] || normalizedBaseUrl;
+        if (normalized && candidates.includes(normalized)) return normalized;
+        return candidates[0] || normalizedBaseUrl;
       });
     };
 
@@ -1067,6 +1078,83 @@ export default function ApiKeysPanel({
     };
   };
 
+  const fetchUpdatedKey = async (
+    keyData: StoredApiKey
+  ): Promise<{
+    updatedKey: StoredApiKey | null;
+    error: "invalid_api_key" | "network" | "other" | null;
+  }> => {
+    const urlToUse = getKeyBase(keyData);
+    try {
+      const response = await fetch(`${urlToUse}v1/wallet/info`, {
+        headers: {
+          Authorization: `Bearer ${keyData.key}`,
+        },
+      });
+
+      if (!response.ok) {
+        try {
+          const data = await response.json();
+          if (data?.detail?.error?.code === "invalid_api_key") {
+            return {
+              updatedKey: { ...keyData, balance: null, isInvalid: true },
+              error: "invalid_api_key",
+            };
+          }
+        } catch {
+          // ignore parse errors
+        }
+        return { updatedKey: null, error: "other" };
+      }
+
+      const data = await response.json();
+      return {
+        updatedKey: {
+          ...keyData,
+          balance: Number(data.balance ?? 0),
+          isInvalid: false,
+        },
+        error: null,
+      };
+    } catch (error) {
+      if (error instanceof TypeError) {
+        return {
+          updatedKey: { ...keyData, balance: null, isInvalid: true },
+          error: "network",
+        };
+      }
+      return { updatedKey: null, error: "other" };
+    }
+  };
+
+  const handleFetchError = (
+    error: "invalid_api_key" | "network" | "other" | null,
+    keyData: StoredApiKey,
+    context: "bulk" | "single"
+  ): StoredApiKey | null => {
+    const urlToUse = getKeyBase(keyData);
+    if (error === "network") {
+      const msg =
+        context === "bulk"
+          ? `Base URL ${urlToUse} is not responding. Skipping key ${keyData.key}.`
+          : `Base URL ${urlToUse} is not responding. Skipping refresh.`;
+      toast.error(msg);
+      return { ...keyData, balance: null, isInvalid: true };
+    }
+    if (error === "other") {
+      const msg =
+        context === "bulk"
+          ? `Error refreshing balance for key ${keyData.key}.`
+          : "Error refreshing key.";
+      toast.error(msg);
+      return context === "bulk" ? keyData : null;
+    }
+    if (error === "invalid_api_key") {
+      return { ...keyData, balance: null, isInvalid: true };
+    }
+    return null;
+  };
+
   const addExistingApiKey = async () => {
     if (!manualApiKey.trim()) {
       toast.error("API key is required");
@@ -1078,25 +1166,25 @@ export default function ApiKeysPanel({
       const addBase = normalizeBaseUrl(selectedAddBaseUrl) || normalizedBaseUrl;
       const info = await fetchKeyInfo(addBase, manualApiKey.trim());
       const candidate: StoredApiKey = {
-        key: info.apiKey,
+        key: manualApiKey.trim(),
         balance: info.balance,
         label: manualApiLabel.trim() || "Manually Added",
         baseUrl: addBase,
         isInvalid: false,
       };
-      const already = storedApiKeys.some((item) => getKeyId(item) === getKeyId(candidate));
-      if (already) {
-        toast.error("This API key is already added for the selected node");
-        return;
-      }
-
-      await persistKeys([candidate, ...storedApiKeys]);
+      await persistKeys(
+        [...storedApiKeys, candidate],
+        cloudSyncEnabled
+          ? "API Key added and synced to cloud successfully!"
+          : "API Key added and stored locally!"
+      );
       setShowAddDialog(false);
       setManualApiLabel("");
       setManualApiKey("");
-      toast.success("API key added");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to add API key");
+      toast.error(
+        `Error adding API key: ${error instanceof Error ? error.message : String(error)}`
+      );
     } finally {
       setIsAdding(false);
     }
@@ -1106,23 +1194,21 @@ export default function ApiKeysPanel({
     const targetId = getKeyId(keyData);
     setIsRefreshingKey(targetId);
     try {
-      const base = getKeyBase(keyData);
-      const info = await fetchKeyInfo(base, keyData.key);
-      const updated = storedApiKeys.map((item) =>
-        getKeyId(item) === targetId
-          ? { ...item, balance: info.balance, isInvalid: false }
-          : item
-      );
-      await persistKeys(updated);
-      toast.success("API key refreshed");
-    } catch (error) {
-      const updated = storedApiKeys.map((item) =>
-        getKeyId(item) === targetId
-          ? { ...item, isInvalid: true, balance: null }
-          : item
-      );
-      await persistKeys(updated);
-      toast.error(error instanceof Error ? error.message : "Failed to refresh key");
+      const { updatedKey, error } = await fetchUpdatedKey(keyData);
+      if (updatedKey) {
+        const updated = storedApiKeys.map((item) =>
+          getKeyId(item) === targetId ? updatedKey : item
+        );
+        await persistKeys(updated, "API key balance refreshed!");
+        return;
+      }
+      const fallback = handleFetchError(error, keyData, "single");
+      if (fallback) {
+        const updated = storedApiKeys.map((item) =>
+          getKeyId(item) === targetId ? fallback : item
+        );
+        await persistKeys(updated);
+      }
     } finally {
       setIsRefreshingKey(null);
     }
@@ -1133,16 +1219,20 @@ export default function ApiKeysPanel({
     try {
       const updated: StoredApiKey[] = [];
       for (const keyData of storedApiKeys) {
-        try {
-          const base = getKeyBase(keyData);
-          const info = await fetchKeyInfo(base, keyData.key);
-          updated.push({ ...keyData, balance: info.balance, isInvalid: false });
-        } catch {
-          updated.push({ ...keyData, balance: null, isInvalid: true });
+        const { updatedKey, error } = await fetchUpdatedKey(keyData);
+        if (updatedKey) {
+          updated.push(updatedKey);
+        } else {
+          const fallback = handleFetchError(error, keyData, "bulk");
+          if (fallback) updated.push(fallback);
         }
       }
-      await persistKeys(updated);
-      toast.success("Balances refreshed");
+      await persistKeys(
+        updated,
+        cloudSyncEnabled
+          ? "API Key balances refreshed and synced to cloud!"
+          : "API Key balances refreshed!"
+      );
     } finally {
       setIsRefreshingAll(false);
     }
@@ -1161,25 +1251,189 @@ export default function ApiKeysPanel({
     const updated = storedApiKeys.map((item) =>
       getKeyId(item) === targetId ? { ...item, label: nextLabel } : item
     );
-    await persistKeys(updated);
-    setEditingLabelKey(null);
-    setEditingLabelValue("");
-    toast.success("API key name updated");
+    try {
+      await persistKeys(updated, "API key name updated");
+    } catch {
+      toast.error("Failed to update API key name");
+    } finally {
+      setEditingLabelKey(null);
+      setEditingLabelValue("");
+    }
   };
 
-  const performRefund = async (keyData: StoredApiKey) => {
+  const performRefund = async (
+    keyData: StoredApiKey
+  ): Promise<{ token?: string; requestId?: string }> => {
     const base = getKeyBase(keyData);
-    const response = await fetch(`${base}v1/wallet/refund`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${keyData.key}`,
-      },
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(errorText || "Refund failed");
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+    try {
+      const response = await fetch(`${base}v1/wallet/refund`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${keyData.key}`,
+          "Content-Type": "application/json",
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      const requestId = response.headers.get("x-routstr-request-id") || undefined;
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        if (response.status === 400 && errorData?.detail === "No balance to refund") {
+          throw new Error("No balance to refund");
+        }
+        throw new Error(
+          `Refund request failed with status ${response.status}: ${
+            errorData?.detail || response.statusText
+          }`
+        );
+      }
+
+      const data = (await response.json()) as { token?: string };
+      return { token: data.token, requestId };
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error("Request timed out after 1 minute");
+      }
+      throw error instanceof Error ? error : new Error("Refund failed");
     }
-    return (await response.json()) as { token?: string };
+  };
+
+  const spendCashu = async (
+    mintUrl: string,
+    amount: number,
+    base: string,
+    transactionMessage: string
+  ): Promise<{
+    token: string | null;
+    status: "success" | "failed";
+    balance: number;
+    error?: string;
+  }> => {
+    try {
+      const nodeMints = await fetchAcceptedMints(base);
+      const { token } = await createTokenFromBalance(
+        amount,
+        nodeMints,
+        mintUrl,
+        transactionMessage
+      );
+      if (base) {
+        setLocalCashuToken(base, token);
+      }
+      return {
+        token,
+        status: "success",
+        balance: amount,
+      };
+    } catch (error) {
+      return {
+        token: null,
+        status: "failed",
+        balance: 0,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  };
+
+  const storeRefundToken = async (token: string): Promise<number> => {
+    const decoded = getDecodedToken(token);
+    const mintUrl = normalizeMintUrl(String(decoded?.mint || ""));
+    if (!mintUrl) {
+      throw new Error("Refund returned an invalid token (missing mint)");
+    }
+
+    const proofsBefore = readCashuProofs() as WalletProof[];
+    const { wallet } = await createWalletForMint(mintUrl);
+    const receiveResult = await wallet.receive(token);
+    const receivedProofs = Array.isArray(receiveResult)
+      ? (receiveResult as CashuProof[])
+      : (receiveResult &&
+            typeof receiveResult === "object" &&
+            Array.isArray((receiveResult as { proofs?: unknown }).proofs)
+        ? ((receiveResult as { proofs: CashuProof[] }).proofs as CashuProof[])
+        : []);
+
+    if (!receivedProofs.length) {
+      throw new Error("Refund token contained no spendable proofs");
+    }
+
+    const annotatedReceivedProofs = annotateProofsWithMint(receivedProofs, mintUrl);
+    const proofsAfter = [...proofsBefore, ...annotatedReceivedProofs];
+    writeCashuProofs(proofsAfter);
+
+    if (syncAccount) {
+      const beforeMintProofs = getProofsForMint(proofsBefore, mintUrl);
+      const afterMintProofs = getProofsForMint(proofsAfter, mintUrl);
+      const eventIdsToDelete = Array.from(
+        new Set(
+          beforeMintProofs
+            .map((proof) => proof.eventId)
+            .filter((eventId): eventId is string => typeof eventId === "string")
+        )
+      );
+
+      const newEventId = await publishNip60MintSnapshot(
+        syncAccount,
+        mintUrl,
+        afterMintProofs,
+        eventIdsToDelete
+      );
+
+      writeCashuProofs(
+        proofsAfter.map((proof) =>
+          normalizeMintUrl(proof.mintUrl || "") === mintUrl
+            ? { ...proof, eventId: newEventId }
+            : proof
+        )
+      );
+    }
+
+    const amountInMintUnit = receivedProofs.reduce(
+      (sum, proof) => sum + Number(proof.amount || 0),
+      0
+    );
+    const amountSats = decoded?.unit === "msat" ? amountInMintUnit / 1000 : amountInMintUnit;
+
+    appendTransaction({
+      type: "refund",
+      amount: amountSats,
+      timestamp: Date.now(),
+      status: "success",
+      message: "API key refund received",
+      balance: getProofsBalanceSats(),
+    });
+
+    return amountSats;
+  };
+
+  const unifiedRefund = async (keyData: StoredApiKey): Promise<UnifiedRefundResult> => {
+    try {
+      const refundResult = await performRefund(keyData);
+      if (!refundResult.token) {
+        return {
+          success: false,
+          message: "No token received from refund",
+          requestId: refundResult.requestId,
+        };
+      }
+
+      const refundedAmount = await storeRefundToken(refundResult.token);
+      return {
+        success: true,
+        refundedAmount,
+        requestId: refundResult.requestId,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : "Refund failed",
+      };
+    }
   };
 
   const deleteKey = async () => {
@@ -1188,10 +1442,19 @@ export default function ApiKeysPanel({
     setIsDeletingKey(deleteId);
     try {
       const updated = storedApiKeys.filter((item) => getKeyId(item) !== deleteId);
-      await persistKeys(updated);
+      if (cloudSyncEnabled) {
+        await deleteApiKeyFromCloud(deleteId);
+        setStoredApiKeys(updated);
+        toast.success("API Key deleted and synced to cloud successfully!");
+      } else {
+        localStorage.setItem(CHAT_LOCAL_API_KEYS_STORAGE_KEY, JSON.stringify(updated));
+        setStoredApiKeys(updated);
+        toast.success("API Key deleted locally!");
+      }
+      window.dispatchEvent(new Event("platform-api-keys-updated"));
       setShowDeleteDialog(false);
       setKeyToDelete(null);
-      toast.success("API key deleted");
+      setRefundFailed(false);
     } finally {
       setIsDeletingKey(null);
     }
@@ -1199,55 +1462,65 @@ export default function ApiKeysPanel({
 
   const refundAndDeleteKey = async () => {
     if (!keyToDelete) return;
+
+    if (refundFailed) {
+      await deleteKey();
+      return;
+    }
+
     setIsRefundingKey(getKeyId(keyToDelete));
     try {
-      const result = await performRefund(keyToDelete);
-      if (result.token) {
-        await navigator.clipboard.writeText(result.token);
-        toast.success("Refund complete");
+      const refundResult = await unifiedRefund(keyToDelete);
+      if (refundResult.success) {
+        toast.success(
+          refundResult.message || "API Key balance refunded successfully!"
+        );
+        await deleteKey();
       } else {
-        toast.success("Refund complete");
+        setRefundFailed(true);
+        setShowDeleteDialog(true);
+        toast.error(
+          refundResult.message ||
+            "Refund failed. Confirm delete to continue anyway."
+        );
       }
-      await deleteKey();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Refund failed");
     } finally {
       setIsRefundingKey(null);
     }
   };
 
   const confirmCreateApiKey = async () => {
-    const amount = Number.parseInt(createApiAmount, 10);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      toast.error("Please enter a valid amount for the API key.");
-      return;
-    }
-
-    const createBase = normalizeBaseUrl(selectedCreateBaseUrl) || normalizedBaseUrl;
-    const activeMint = readStoredActiveMint();
-    if (!activeMint) {
-      toast.error("No active mint selected");
-      return;
-    }
-
     setIsCreatingKey(true);
     try {
-      const availableOnActiveMint = await getMintBalanceSats(activeMint);
-      if (amount > Math.floor(availableOnActiveMint)) {
+      let token: string | null | { hasTokens: false } | undefined;
+
+      if (!createApiAmount || Number.parseInt(createApiAmount, 10) <= 0) {
+        toast.error("Please enter a valid amount for the API key.");
+        return;
+      }
+
+      const createBase = normalizeBaseUrl(selectedCreateBaseUrl) || normalizedBaseUrl;
+      const activeMint = activeMintUrl;
+      if (!activeMint) {
+        toast.error("No active mint selected");
+        return;
+      }
+
+      const result = await spendCashu(
+        activeMint,
+        Number.parseInt(createApiAmount, 10),
+        createBase,
+        "Spent wallet balance for API key creation"
+      );
+
+      if (result.status === "failed" || !result.token) {
         toast.error(
-          `Amount exceeds active mint balance (${Math.floor(availableOnActiveMint)} sats).`
+          result.error || "Failed to generate Cashu token for API key creation."
         );
         return;
       }
 
-      const nodeMints = await fetchAcceptedMints(createBase);
-      const { token } = await createTokenFromBalance(
-        amount,
-        nodeMints,
-        activeMint,
-        "Spent wallet balance for API key creation",
-        { strictPreferredMint: true }
-      );
+      token = result.token;
 
       const response = await fetch(`${createBase}v1/wallet/info`, {
         headers: {
@@ -1256,89 +1529,80 @@ export default function ApiKeysPanel({
       });
 
       if (!response.ok) {
-        let message = "Failed to fetch API key from wallet endpoint";
-        try {
-          const errorData = await response.json();
-          if (typeof errorData?.detail === "string" && errorData.detail.trim()) {
-            message = errorData.detail;
-          } else if (
-            typeof errorData?.detail?.error?.message === "string" &&
-            errorData.detail.error.message.trim()
-          ) {
-            message = errorData.detail.error.message;
-          }
-        } catch {
-          // keep fallback message
-        }
-        throw new Error(message);
+        throw new Error("Failed to fetch API key from wallet endpoint");
       }
 
-      const payload = (await response.json()) as {
+      const data = (await response.json()) as {
         api_key?: string;
-        apiKey?: string;
+        balance?: number | string;
       };
-      const apiKey = String(payload.api_key || payload.apiKey || "").trim();
-      if (!apiKey) {
+      const newApiKey = String(data.api_key || "").trim();
+      if (!newApiKey) {
         throw new Error("API key response did not include an api_key");
       }
-
-      await upsertKeyFromWorkflow(
-        createBase,
-        apiKey,
-        createApiLabel.trim() || "Unnamed"
-      );
+      const newApiKeyBalance = Number(data.balance ?? 0);
+      const newStoredKey: StoredApiKey = {
+        key: newApiKey,
+        balance: Number.isFinite(newApiKeyBalance) ? newApiKeyBalance : 0,
+        label: createApiLabel || "Unnamed",
+        baseUrl: createBase,
+        isInvalid: false,
+      };
+      const updatedKeys = [...storedApiKeys, newStoredKey];
+      if (cloudSyncEnabled) {
+        await persistKeys(updatedKeys, "API Key created and synced to cloud successfully!");
+      } else {
+        await persistKeys(updatedKeys, "API Key created and stored locally!");
+      }
 
       setCreateApiAmount("");
       setCreateApiLabel("");
-      setShowCreateDialog(false);
-      toast.success("API key created");
+      removeLocalCashuToken(createBase);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to create API key");
+      console.error("Error creating API key:", error);
+      toast.error(
+        `Error creating API key: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
     } finally {
       setIsCreatingKey(false);
+      setShowCreateDialog(false);
     }
   };
 
   const topupKey = async () => {
-    if (!keyToTopup) {
-      return;
-    }
-
-    const amount = Number.parseInt(topupAmount, 10);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      toast.error("Enter a valid amount in sats");
+    if (!keyToTopup || !topupAmount || Number.parseInt(topupAmount, 10) <= 0) {
+      toast.error("Please enter a valid amount for top up.");
       return;
     }
 
     const topupId = getKeyId(keyToTopup);
     setIsTopupKey(topupId);
+    setShowTopupDialog(false);
+    const base = getKeyBase(keyToTopup);
     try {
-      const base = getKeyBase(keyToTopup);
-      const activeMint = readStoredActiveMint();
+      let cashuToken: string | null | { hasTokens: false } | undefined;
+      const activeMint = activeMintUrl;
       if (!activeMint) {
         toast.error("No active mint selected");
         return;
       }
 
-      const availableOnActiveMint = await getMintBalanceSats(activeMint);
-      if (amount > Math.floor(availableOnActiveMint)) {
-        toast.error(
-          `Amount exceeds active mint balance (${Math.floor(availableOnActiveMint)} sats).`
-        );
+      const result = await spendCashu(
+        activeMint,
+        Number.parseInt(topupAmount, 10),
+        base,
+        "Spent wallet balance for API key top-up"
+      );
+      if (result.status === "failed" || !result.token) {
+        toast.error(result.error || "Failed to generate Cashu token for top up.");
         return;
       }
-
-      const nodeMints = await fetchAcceptedMints(base);
-      const { token } = await createTokenFromBalance(
-        amount,
-        nodeMints,
-        activeMint,
-        "Spent wallet balance for API key top-up",
-        { strictPreferredMint: true }
-      );
+      cashuToken = result.token;
 
       const response = await fetch(
-        `${base}v1/wallet/topup?cashu_token=${encodeURIComponent(token)}`,
+        `${base}v1/wallet/topup?cashu_token=${encodeURIComponent(cashuToken)}`,
         {
           method: "POST",
           headers: {
@@ -1349,18 +1613,26 @@ export default function ApiKeysPanel({
       );
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || "Top-up failed");
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `Top up failed with status ${response.status}`);
       }
 
-      setShowTopupDialog(false);
-      setTopupAmount("");
+      const data = (await response.json()) as { msats?: number };
+      toast.success(`Successfully topped up ${topupAmount} sats!`);
       await refreshSingleKey(keyToTopup);
-      toast.success("Top-up complete");
+      if (data.msats) removeLocalCashuToken(baseUrl);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Top-up failed");
+      if (error instanceof TypeError) {
+        toast.error(`Base URL ${base} is not responding. Top up failed.`);
+      } else {
+        toast.error(
+          `Top up failed: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
     } finally {
       setIsTopupKey(null);
+      setTopupAmount("");
+      setKeyToTopup(null);
     }
   };
 
@@ -1377,39 +1649,15 @@ export default function ApiKeysPanel({
     }
 
     const info = await fetchKeyInfo(normalizedWorkflowBase, trimmedKey);
-    const resolvedKey = info.apiKey;
-    const resolvedId = `${normalizedWorkflowBase}::${resolvedKey}`;
-    const requestedId = `${normalizedWorkflowBase}::${trimmedKey}`;
+    const newStoredKey: StoredApiKey = {
+      key: trimmedKey,
+      balance: info.balance,
+      label: fallbackLabel || "Imported",
+      baseUrl: normalizedWorkflowBase,
+      isInvalid: false,
+    };
 
-    let matchedExisting = false;
-    const updated = storedApiKeys.map((item) => {
-      const itemId = getKeyCompositeId(item, normalizedBaseUrl);
-      if (itemId !== resolvedId && itemId !== requestedId) {
-        return item;
-      }
-
-      matchedExisting = true;
-      return {
-        ...item,
-        key: resolvedKey,
-        balance: info.balance,
-        baseUrl: normalizedWorkflowBase,
-        isInvalid: false,
-        label: item.label || fallbackLabel || "Imported",
-      };
-    });
-
-    if (!matchedExisting) {
-      updated.unshift({
-        key: resolvedKey,
-        balance: info.balance,
-        label: fallbackLabel || "Imported",
-        baseUrl: normalizedWorkflowBase,
-        isInvalid: false,
-      });
-    }
-
-    await persistKeys(updated);
+    await persistKeys([...storedApiKeys, newStoredKey]);
   };
 
   const activeMintDisplay = activeMintUrl
@@ -1503,6 +1751,20 @@ export default function ApiKeysPanel({
             />
             {isSyncBootstrapping ? "Syncing..." : "Refresh"}
           </Button>
+        </div>
+        <div className="inline-flex w-fit items-center gap-3 text-sm">
+          <span className="text-muted-foreground">Cloud Sync</span>
+          <label
+            className="inline-flex items-center gap-2"
+            htmlFor="platform-api-keys-cloud-sync"
+          >
+            <Switch
+              id="platform-api-keys-cloud-sync"
+              checked={cloudSyncEnabled}
+              onCheckedChange={setCloudSyncEnabled}
+            />
+            <span className="text-foreground">{cloudSyncEnabled ? "On" : "Off"}</span>
+          </label>
         </div>
 
       </Card>
@@ -1720,14 +1982,19 @@ export default function ApiKeysPanel({
                         onClick={async () => {
                           setIsRefundingKey(keyId);
                           try {
-                            const result = await performRefund(keyData);
-                            if (result.token) {
-                              await navigator.clipboard.writeText(result.token);
-                              toast.success("Refund complete");
+                            const refundResult = await unifiedRefund(keyData);
+                            if (refundResult.success) {
+                              toast.success(
+                                refundResult.message ||
+                                  "Refund completed successfully!"
+                              );
+                              await refreshAllKeys();
                             } else {
-                              toast.success("Refund complete");
+                              toast.error(
+                                refundResult.message ||
+                                  "Failed to complete refund."
+                              );
                             }
-                            await refreshSingleKey(keyData);
                           } catch (error) {
                             toast.error(
                               error instanceof Error ? error.message : "Refund failed"
@@ -1746,6 +2013,7 @@ export default function ApiKeysPanel({
                       <Button
                         onClick={() => {
                           setKeyToDelete(keyData);
+                          setRefundFailed(false);
                           setShowDeleteDialog(true);
                         }}
                         variant="outline"
@@ -1877,6 +2145,7 @@ export default function ApiKeysPanel({
           setShowDeleteDialog(open);
           if (!open) {
             setKeyToDelete(null);
+            setRefundFailed(false);
           }
         }}
       >
@@ -1886,8 +2155,9 @@ export default function ApiKeysPanel({
               <DialogHeader>
                 <DialogTitle>Delete API Key</DialogTitle>
                 <DialogDescription>
-                  Delete <span className="font-medium">{keyToDelete.label || "Unnamed"}</span>.
-                  You can refund first or delete immediately.
+                  {refundFailed
+                    ? `Refund failed for ${keyToDelete.label || "Unnamed"}. Delete anyway?`
+                    : `Delete ${keyToDelete.label || "Unnamed"} and refund remaining balance first.`}
                 </DialogDescription>
               </DialogHeader>
               <div className="flex justify-end gap-2">
@@ -1895,6 +2165,7 @@ export default function ApiKeysPanel({
                   onClick={() => {
                     setShowDeleteDialog(false);
                     setKeyToDelete(null);
+                    setRefundFailed(false);
                   }}
                   variant="ghost"
                   type="button"
@@ -1905,21 +2176,18 @@ export default function ApiKeysPanel({
                   onClick={() => void refundAndDeleteKey()}
                   variant="outline"
                   type="button"
-                  disabled={isRefundingKey === getKeyId(keyToDelete)}
+                  disabled={
+                    isRefundingKey === getKeyId(keyToDelete) ||
+                    isDeletingKey === getKeyId(keyToDelete)
+                  }
                 >
                   {isRefundingKey === getKeyId(keyToDelete)
                     ? "Refunding..."
-                    : "Refund & Delete"}
-                </Button>
-                <Button
-                  onClick={() => void deleteKey()}
-                  variant="outline"
-                  type="button"
-                  disabled={isDeletingKey === getKeyId(keyToDelete)}
-                >
-                  {isDeletingKey === getKeyId(keyToDelete)
+                    : isDeletingKey === getKeyId(keyToDelete)
                     ? "Deleting..."
-                    : "Delete Only"}
+                    : refundFailed
+                    ? "Delete Anyway"
+                    : "Refund & Delete"}
                 </Button>
               </div>
             </>
@@ -1993,7 +2261,13 @@ export default function ApiKeysPanel({
                     onClick={() => void topupKey()}
                     variant="outline"
                     type="button"
-                    disabled={!topupAmount.trim() || isTopupKey === getKeyId(keyToTopup)}
+                    disabled={
+                      !topupAmount.trim() ||
+                      isTopupKey === getKeyId(keyToTopup) ||
+                      (Number.parseInt(topupAmount, 10) > 0 &&
+                        Number.isFinite(activeMintBalanceSats || 0) &&
+                        Number.parseInt(topupAmount, 10) > Number(activeMintBalanceSats || 0))
+                    }
                   >
                     {isTopupKey === getKeyId(keyToTopup)
                       ? "Topping up..."
