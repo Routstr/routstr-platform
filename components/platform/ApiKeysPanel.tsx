@@ -827,6 +827,7 @@ export default function ApiKeysPanel({
         if (cancelled) return;
         if (cloudKeys.length > 0) {
           setStoredApiKeys(cloudKeys);
+          localStorage.setItem(CHAT_LOCAL_API_KEYS_STORAGE_KEY, JSON.stringify(cloudKeys));
           return;
         }
 
@@ -839,6 +840,7 @@ export default function ApiKeysPanel({
         }
 
         setStoredApiKeys([]);
+        localStorage.removeItem(CHAT_LOCAL_API_KEYS_STORAGE_KEY);
       } catch {
         if (cancelled) return;
         setStoredApiKeys(localKeys);
@@ -861,14 +863,13 @@ export default function ApiKeysPanel({
     successMessage?: string
   ): Promise<void> => {
     setStoredApiKeys(keys);
+    localStorage.setItem(CHAT_LOCAL_API_KEYS_STORAGE_KEY, JSON.stringify(keys));
 
     if (cloudSyncEnabled) {
       if (!syncAccount) {
         throw new Error("User not logged in");
       }
       await publishCloudApiKeys(syncAccount, keys);
-    } else {
-      localStorage.setItem(CHAT_LOCAL_API_KEYS_STORAGE_KEY, JSON.stringify(keys));
     }
     window.dispatchEvent(new Event("platform-api-keys-updated"));
     if (successMessage) {
@@ -885,6 +886,8 @@ export default function ApiKeysPanel({
         const cloudKeys = await fetchCloudApiKeys(syncAccount, normalizedBaseUrl);
         if (cancelled) return;
         setStoredApiKeys(cloudKeys);
+        localStorage.setItem(CHAT_LOCAL_API_KEYS_STORAGE_KEY, JSON.stringify(cloudKeys));
+        window.dispatchEvent(new Event("platform-api-keys-updated"));
       } catch {
         // Keep current keys on transient relay/network errors
       }
