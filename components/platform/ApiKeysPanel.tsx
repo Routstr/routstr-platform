@@ -97,11 +97,10 @@ type CreateTokenOptions = {
 };
 
 const DEFAULT_SYNC_RELAYS = [
-  "wss://relay.routstr.com",
-  "wss://nos.lol",
-  "wss://relay.primal.net",
+  "wss://relay.chorus.community",
   "wss://relay.damus.io",
   "wss://relay.nostr.band",
+  "wss://nos.lol",
 ];
 type CloudSyncCapableAccount = {
   pubkey: string;

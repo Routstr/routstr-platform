@@ -7,13 +7,10 @@ const NOSTR_APP_CONFIG_STORAGE_KEY = "nostr:app-config";
 const NOSTR_RELAYS_STORAGE_KEY = "nostr_relays";
 
 const DEFAULT_SYNC_RELAYS = [
-  "wss://relay.routstr.com",
-  "wss://nos.lol",
-  "wss://relay.primal.net",
+  "wss://relay.chorus.community",
   "wss://relay.damus.io",
   "wss://relay.nostr.band",
-  "wss://relay.chorus.community",
-  "wss://relay.nsec.app",
+  "wss://nos.lol",
 ];
 
 const DEFAULT_TOKEN_QUERY_WAIT_MS = 7000;
